@@ -1,1 +1,1 @@
-import RiscvImCompare.Basic
+import RiscvImCompare.Simulation
