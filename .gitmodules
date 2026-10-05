@@ -1,0 +1,7 @@
+[submodule "deps/flapjack"]
+	path = deps/flapjack
+	url = https://github.com/flamingoponderado/flapjack.git
+	branch = riscv-im
+[submodule "deps/riscv-zkvm"]
+	path = deps/riscv-zkvm
+	url = https://github.com/Verified-zkEVM/riscv-zkvm.git

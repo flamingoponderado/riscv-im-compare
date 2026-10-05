@@ -1,0 +1,14 @@
+name = "RiscvImCompare"
+version = "0.1.0"
+defaultTargets = ["RiscvImCompare"]
+
+[[require]]
+name = "Flapjack"
+path = "deps/flapjack"
+
+[[require]]
+name = "riscv-zkvm"
+path = "deps/riscv-zkvm"
+
+[[lean_lib]]
+name = "RiscvImCompare"
