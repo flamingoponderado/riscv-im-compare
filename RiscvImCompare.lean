@@ -7,3 +7,4 @@ import RiscvImCompare.Relation
 import RiscvImCompare.L3Step
 import RiscvImCompare.SimStep
 import RiscvImCompare.Main
+import RiscvImCompare.Differences
