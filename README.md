@@ -5,7 +5,7 @@ A Lean 4 development comparing two RISC-V semantics:
 | | Model | Where |
 |---|---|---|
 | **L3** | Flapjack's L3-derived RV64IM model (`Flapjack.RiscV.L3`, step function `riscvNext`), which Flapjack's Pancake compiler-correctness theorem is stated over | `deps/flapjack`, branch `riscv-im` (pinned at `034bb5a1e`) |
-| **zkvm** | riscv-zkvm's hand-written computable RV64IM model (`RiscvZkvm.Rv64`, step function `RiscvZkvm.Rv64.step`) | `deps/riscv-zkvm`, tag `v0.3.1` (pinned at `93ab6ef`) |
+| **zkvm** | riscv-zkvm's hand-written computable RV64IM model (`RiscvZkvm.Rv64`, step function `RiscvZkvm.Rv64.step`) | `deps/riscv-zkvm`, tag `v0.4.0` (pinned at `19ab42c`) |
 
 **Comparison criterion.** We do not compare instruction encodings or
 irrelevant microarchitectural details; for example, it does not matter whether
@@ -352,13 +352,13 @@ are **properties checked to agree**.
 ## Building
 
 ```sh
-git submodule update --init      # deps/flapjack (riscv-im), deps/riscv-zkvm (v0.3.1)
+git submodule update --init      # deps/flapjack (riscv-im), deps/riscv-zkvm (v0.4.0)
 lake exe cache get               # Mathlib cache (Flapjack depends on Mathlib)
 lake build                       # builds the library and runs the axiom audit
 ```
 
-- The toolchain is `leanprover/lean4:v4.33.1`, Flapjack's. riscv-zkvm v0.3.1
-  pins v4.33.0 and is built from source with v4.33.1 without changes.
+- The toolchain is `leanprover/lean4:v4.33.1`, which both Flapjack and
+  riscv-zkvm v0.4.0 pin.
 - A cold build compiles Flapjack (several thousand modules); this needs a lot of
   memory and CPU time.
 - Use `lake build <Module>` rather than `lake env lean <file>`. With Lake's
