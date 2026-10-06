@@ -68,6 +68,30 @@ def toZ : instruction → Option Instr
   | .Branch (.JALR (rd, rs1, imm)) => some (.JALR (regOfBits rd) (regOfBits rs1) imm)
   | _ => none
 
+
+/-- The riscv-zkvm instruction denoted by an L3 instruction, for every
+instruction both models implement *except* `ECALL` and `EBREAK` (whose
+semantics differ): the 37 kinds of `toZ` plus the 13 shared instructions that
+flapjack's encoder never emits. `FENCE` is a no-op in both models, so its
+fields are irrelevant. -/
+def toZx : instruction → Option Instr
+  | .ArithI (.SLTI (rd, rs1, imm)) => some (.SLTI (regOfBits rd) (regOfBits rs1) imm)
+  | .ArithI (.SLTIU (rd, rs1, imm)) => some (.SLTIU (regOfBits rd) (regOfBits rs1) imm)
+  | .ArithI (.ADDIW (rd, rs1, imm)) => some (.ADDIW (regOfBits rd) (regOfBits rs1) imm)
+  | .ArithR (.SLT (rd, rs1, rs2)) => some (.SLT (regOfBits rd) (regOfBits rs1) (regOfBits rs2))
+  | .Load (.LB (rd, rs1, off)) => some (.LB (regOfBits rd) (regOfBits rs1) off)
+  | .Load (.LH (rd, rs1, off)) => some (.LH (regOfBits rd) (regOfBits rs1) off)
+  | .Load (.LW (rd, rs1, off)) => some (.LW (regOfBits rd) (regOfBits rs1) off)
+  | .MulDiv (.MULH (rd, rs1, rs2)) =>
+    some (.MULH (regOfBits rd) (regOfBits rs1) (regOfBits rs2))
+  | .MulDiv (.MULHSU (rd, rs1, rs2)) =>
+    some (.MULHSU (regOfBits rd) (regOfBits rs1) (regOfBits rs2))
+  | .MulDiv (.DIVU (rd, rs1, rs2)) => some (.DIVU (regOfBits rd) (regOfBits rs1) (regOfBits rs2))
+  | .MulDiv (.REM (rd, rs1, rs2)) => some (.REM (regOfBits rd) (regOfBits rs1) (regOfBits rs2))
+  | .MulDiv (.REMU (rd, rs1, rs2)) => some (.REMU (regOfBits rd) (regOfBits rs1) (regOfBits rs2))
+  | .FENCE _ => some .FENCE
+  | i => toZ i
+
 /-- Little-endian doubleword at `a` in L3's byte memory. -/
 def l3Dword (m : BitVec 64 → BitVec 8) (a : BitVec 64) : BitVec 64 :=
   m (a + 7) ++ m (a + 6) ++ m (a + 5) ++ m (a + 4) ++ m (a + 3) ++ m (a + 2) ++ m (a + 1) ++ m a
