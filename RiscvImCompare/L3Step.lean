@@ -61,7 +61,24 @@ theorem l3_fetch (ms : riscv_state) (w : BitVec 32)
   rw [l3Word_bytes' w]
   rfl
 
-/-- Hypotheses for executing the supported instruction `i` at the PC. -/
+/-- Hypotheses for executing instruction `i`, fetched as the 32-bit word `w`
+at the PC. -/
+structure AtPcW (ms : riscv_state) (w : BitVec 32) (i : instruction) : Prop where
+  ok : riscvOk ms = true
+  low0 : w.getLsbD 0 = true
+  low1 : w.getLsbD 1 = true
+  b0 : ms.MEM8 (ms.c_PC ms.procID) = holWordExtract 8 7 0 w
+  b1 : ms.MEM8 (ms.c_PC ms.procID + 1) = holWordExtract 8 15 8 w
+  b2 : ms.MEM8 (ms.c_PC ms.procID + 2) = holWordExtract 8 23 16 w
+  b3 : ms.MEM8 (ms.c_PC ms.procID + 3) = holWordExtract 8 31 24 w
+  dec : Step.DecodeAny (.Word w) = i
+
+theorem AtPcW.fetch {ms : riscv_state} {w : BitVec 32} {i : instruction} (h : AtPcW ms w i) :
+    Step.Fetch ms = (.Word w, fetched ms) :=
+  l3_fetch ms _ ((riscvOk_iff ms).mp h.ok).1 h.low0 h.low1 h.b0 h.b1 h.b2 h.b3
+
+/-- Hypotheses for executing the supported instruction `i`, fetched from its
+own encoding. -/
 structure AtPc (ms : riscv_state) (i : instruction) : Prop where
   ok : riscvOk ms = true
   supp : toZ i ≠ none
@@ -70,27 +87,28 @@ structure AtPc (ms : riscv_state) (i : instruction) : Prop where
   b2 : ms.MEM8 (ms.c_PC ms.procID + 2) = holWordExtract 8 23 16 (Encode i)
   b3 : ms.MEM8 (ms.c_PC ms.procID + 3) = holWordExtract 8 31 24 (Encode i)
 
-theorem AtPc.fetch {ms : riscv_state} {i : instruction} (h : AtPc ms i) :
-    Step.Fetch ms = (.Word (Encode i), fetched ms) :=
-  l3_fetch ms _ ((riscvOk_iff ms).mp h.ok).1 (encode_low_bits i h.supp).1
-    (encode_low_bits i h.supp).2 h.b0 h.b1 h.b2 h.b3
+theorem AtPc.toW {ms : riscv_state} {i : instruction} (h : AtPc ms i) : AtPcW ms (Encode i) i :=
+  ⟨h.ok, (encode_low_bits i h.supp).1, (encode_low_bits i h.supp).2, h.b0, h.b1, h.b2, h.b3,
+    l3_decode_encode i h.supp⟩
 
 /-- Normal (fall-through) control flow. -/
-theorem l3_next_normal {ms : riscv_state} {i : instruction} (h : AtPc ms i) (nxt : riscv_state)
+theorem l3_next_normal {ms : riscv_state} {w : BitVec 32} {i : instruction} (h : AtPcW ms w i)
+    (nxt : riscv_state)
     (hrun : Run i (fetched ms) = nxt) (hexc : nxt.exception = .NoException)
     (hnf : nxt.c_NextFetch nxt.procID = none) :
     Step.NextRISCV ms = some («write'PC» (nxt.c_PC nxt.procID + Skip nxt) nxt) :=
-  Step.nextRISCV ms _ (fetched ms) i nxt ⟨h.fetch, l3_decode_encode i h.supp, hrun, hexc, hnf⟩
+  Step.nextRISCV ms _ (fetched ms) i nxt ⟨h.fetch, h.dec, hrun, hexc, hnf⟩
 
 /-- Taken branch / jump. -/
-theorem l3_next_branch {ms : riscv_state} {i : instruction} (h : AtPc ms i) (nxt : riscv_state)
+theorem l3_next_branch {ms : riscv_state} {w : BitVec 32} {i : instruction} (h : AtPcW ms w i)
+    (nxt : riscv_state)
     (a : BitVec 64)
     (hrun : Run i (fetched ms) = nxt) (hexc : nxt.exception = .NoException)
     (hnf : nxt.c_NextFetch nxt.procID = some (.BranchTo a)) :
     Step.NextRISCV ms = some («write'PC» a
       { nxt with c_NextFetch := holUpdate nxt.procID none nxt.c_NextFetch }) := by
   rw [Step.nextRISCV_branch ms _ (fetched ms) i nxt a
-    ⟨h.fetch, l3_decode_encode i h.supp, hrun, hexc, hnf⟩]
+    ⟨h.fetch, h.dec, hrun, hexc, hnf⟩]
   rfl
 
 end RiscvImCompare

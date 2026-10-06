@@ -17,7 +17,7 @@ open RiscvZkvm.Interpreter (regOfBits decode)
 
 /-- L3 executes an `LD` at **any** address (no alignment or range check). -/
 theorem l3_ld_total {ms : riscv_state} (rd rs1 : BitVec 5) (off : BitVec 12)
-    (h : AtPc ms (.Load (.LD (rd, rs1, off)))) :
+    {w : BitVec 32} (h : AtPcW ms w (.Load (.LD (rd, rs1, off)))) :
     ∃ ms', Step.NextRISCV ms = some ms' := by
   have f := (riscvOk_iff ms).mp h.ok
   refine ⟨_, l3_next_normal h («write'GPR» (rawReadData (GPR rs1 ms + BitVec.signExtend 64 off) ms,
@@ -29,7 +29,7 @@ theorem l3_ld_total {ms : riscv_state} (rd rs1 : BitVec 5) (off : BitVec 12)
 
 /-- L3 executes an `SD` at **any** address. -/
 theorem l3_sd_total {ms : riscv_state} (rs1 rs2 : BitVec 5) (off : BitVec 12)
-    (h : AtPc ms (.Store (.SD (rs1, rs2, off)))) :
+    {w : BitVec 32} (h : AtPcW ms w (.Store (.SD (rs1, rs2, off)))) :
     ∃ ms', Step.NextRISCV ms = some ms' := by
   have f := (riscvOk_iff ms).mp h.ok
   have hw := rawWriteData_eq (ms := fetched ms) (GPR rs1 ms + BitVec.signExtend 64 off) (GPR rs2 ms) 8

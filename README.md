@@ -88,6 +88,56 @@ build time.
      riscv-zkvm's doubleword memory agree on aligned loads and stores of every
      size.
 
+### Arbitrary (non-compiler) code
+
+The theorems above are about Flapjack's machine semantics, which only steps
+on encoder outputs. For submitted RISC-V code, the following theorems compare
+the raw step functions, L3's `NextRISCV` and riscv-zkvm's `step`, on
+**arbitrary instruction words**:
+
+- **Decoder agreement on all 2³² words** (`DecodeAgree.lean`).
+  - `decode_eq_toZx`: for every word whose major opcode is not SYSTEM
+    (`0x73`), riscv-zkvm's `decode w = toZx (Decode w)`. The two decoders
+    accept the same words and pick the same instruction with the same
+    operands.
+  - `decode_some_toZx`: whenever riscv-zkvm decodes a word, the result is
+    `ECALL`, `EBREAK`, `CSRS`, or exactly L3's decoding.
+  - `Decode_toZx`: whenever L3 decodes a word, the result is `ECALL`,
+    `EBREAK`, or exactly riscv-zkvm's decoding.
+  - The only disagreements are on SYSTEM words; `example`s check one word
+    from each group.
+    - **ECALL with nonzero rd/rs1:** 1023 words, e.g. `0x000000f3`.
+      riscv-zkvm decodes them as `ECALL`; L3 accepts only `0x00000073`.
+    - **EBREAK with nonzero rd/rs1:** 1023 words, e.g. `0x00108073`.
+      riscv-zkvm decodes them as `EBREAK`; L3 accepts only `0x00100073`.
+    - **CSRS:** 2¹⁷ words of the form `csrrs x0, csr, rs1`, e.g.
+      `0x00002073`. riscv-zkvm runs ZisK accelerators; L3 has no CSR
+      instructions.
+- **Execution agreement for all 50 shared instructions**
+  (`SimStep.lean`, `SimShared.lean`). These are the 37 encoder instructions
+  plus `SLT SLTI SLTIU ADDIW LB LH LW MULH MULHSU DIVU REM REMU FENCE`.
+  - `step_sim_word`: for any word at the PC that L3 decodes to one of these,
+    if both decoders agree on it and its memory access is safe, both models
+    step to related states.
+  - `step_sim_nonsystem`: the same, with the decoder hypothesis replaced by
+    "opcode ≠ SYSTEM".
+  - `both_reject_nonsystem`: outside SYSTEM, a word L3 does not decode to a
+    shared instruction is also rejected by riscv-zkvm.
+- **Multi-step runs** (`ArbitraryStep.lean`, `ArbitraryCode.lean`).
+  - `run_sim` and `run_sim_nonsystem`: if every state reached in the first
+    `n` L3 steps satisfies `SafeWordNS`, then both models complete `n` steps
+    to related states. `SafeWordNS` requires:
+    - the state is ok and the PC is in the program `C`;
+    - the word is not SYSTEM and is a shared instruction;
+    - memory accesses are aligned and inside riscv-zkvm's memory map;
+    - stores do not write into `C`.
+- **ECALL/EBREAK** (`ArbitraryStep.lean`).
+  - `l3_ecall_none` and `l3_ebreak_none`: L3 never completes these steps,
+    since it raises an exception. Flapjack's `riscvNext` then yields the
+    unspecified `holThe none`.
+  - riscv-zkvm traps on `EBREAK`, but runs its syscall ABI on `ECALL`: halt
+    when `t0 = 0`, `write_output`, `read_input` and WRITE.
+
 ### How the comparison is set up
 
 - **`zkvmTarget`** (`Relation.lean`) packages `RiscvZkvm.Rv64.step` as a
@@ -206,30 +256,29 @@ are **properties checked to agree**.
      `docs/validation.md`, known gap 2). L3 also rejects every compressed (RVC)
      parcel: it decodes to `UnknownInstruction`, so `NextRISCV` is `none`
      (flapjack's `NextRISCV_half_none`).
-   - Both models implement `SLT`, `SLTI`, `SLTIU`, `ADDIW`, `LB`, `LH`, `LW`,
-     `MULH`, `MULHSU`, `DIVU`, `REM`, `REMU`, `FENCE`, `ECALL` and `EBREAK`.
-     Flapjack never emits these, so they are **not** covered by the proofs
-     here; their agreement is unproved.
+   - Both models also implement `SLT`, `SLTI`, `SLTIU`, `ADDIW`, `LB`, `LH`,
+     `LW`, `MULH`, `MULHSU`, `DIVU`, `REM`, `REMU`, `FENCE`, `ECALL` and
+     `EBREAK`. Flapjack never emits these. Agreement is proved for all of them
+     except `ECALL` (see "Arbitrary code" above).
    - riscv-zkvm additionally has `CSRS` (ZisK accelerator calls). L3 has no CSR
      instructions.
 
-   **Arbitrary (non-compiler) RISC-V code is outside the scope of the
-   theorems.** `machineSemHOL` only steps when the bytes at the PC are a
-   flapjack encoder output, so any other instruction ends the run in `error`.
-   Comparing the raw step functions on arbitrary code, the remaining
-   differences are:
-   - `ECALL`: riscv-zkvm runs its syscalls (halt, `write_output`,
-     `read_input`, WRITE); L3 raises an environment-call exception.
-   - `EBREAK`, illegal or compressed instructions, and misaligned jump
-     targets: riscv-zkvm traps (`step = none`); L3 raises an exception.
-   - CSR instructions: riscv-zkvm executes `CSRS` accelerators; L3 treats them
-     as illegal.
-   - Misaligned loads and stores, and addresses outside the zkVM memory map:
-     L3 succeeds; riscv-zkvm traps (item 1).
-   - Self-modifying code: L3 executes the new bytes; riscv-zkvm keeps
+   For arbitrary code, these differences remain (see "Arbitrary code" above
+   for what is proved):
+   - **SYSTEM decoding:** riscv-zkvm accepts ECALL/EBREAK with nonzero rd/rs1
+     and CSRS words; L3 rejects all of them.
+   - **`ECALL`:** riscv-zkvm runs its syscalls; L3 raises an
+     environment-call exception.
+   - **Traps:** on `EBREAK`, illegal or compressed instructions, and
+     misaligned jump targets, riscv-zkvm traps (`step = none`) and L3 raises
+     an exception. Neither model completes the step.
+   - **Memory:** misaligned loads/stores and addresses outside the zkVM
+     memory map succeed in L3 but trap in riscv-zkvm (item 1).
+   - **Self-modifying code:** L3 executes the new bytes; riscv-zkvm keeps
      executing its fixed `code` (item 2).
-   - Whenever L3 raises an exception, flapjack's `riscvNext` is
-     `holThe none`. That is an *unspecified* state, not a defined trap.
+   - **L3 exceptions:** whenever L3 raises an exception, Flapjack's
+     `riscvNext` is `holThe none`, an *unspecified* state rather than a
+     defined trap.
 
 6. **State components not related.**
    - L3's CSRs, `Skip`, `NextFetch`, `log`, `ExitCode` and other bookkeeping
@@ -267,6 +316,15 @@ are **properties checked to agree**.
   `RiscvZkvm.Rv64.step` against its Sail extraction (`RiscvZkvm.Rv64.SailEquiv`,
   under its own run invariants); composing the two results has not been
   attempted.
+- **Arbitrary code, whole runs.** `run_sim_nonsystem` needs `SafeWordNS` at
+  every step, i.e. memory safety, PC in the program and no self-modification.
+  These are properties of the submitted program, checked per run rather than
+  derived. There is also no run-level statement for programs that use `ECALL`,
+  since the semantics differ.
+- **Non-SYSTEM opcodes never decode to ECALL/EBREAK in L3.** This was checked
+  exhaustively by an external C program but is not proved in Lean.
+  `Decode_system_agree` keeps an opcode hypothesis for this reason. It does
+  not affect `decode_eq_toZx`, `decode_some_toZx` or `Decode_toZx`.
 - **Flapjack's trust base.** The caveats in Flapjack's `docs/SOUNDNESS.md`
   apply unchanged; for example, the statement is about the logical compiler
   `compile_prog_max`.
@@ -276,7 +334,7 @@ are **properties checked to agree**.
 | File | Contents |
 |---|---|
 | `RiscvImCompare/Simulation.lean` | generic simulation theorem for `machineSemHOL` (`evaluate_sim`, `machineSem_sim`) |
-| `RiscvImCompare/Defs.lean` | `toZ` (the 37 instructions → riscv-zkvm `Instr`), `l3Dword`, `l3Word`, `MemRel` |
+| `RiscvImCompare/Defs.lean` | `toZ` (the 37 encoder instructions) and `toZx` (all 50 shared ones) → riscv-zkvm `Instr`, `l3Dword`, `l3Word`, `MemRel` |
 | `RiscvImCompare/Image.lean` | every encoder output is supported; fetch inside the evaluator |
 | `RiscvImCompare/ZDecode.lean` | riscv-zkvm `decode ∘ L3 Encode = toZ` |
 | `RiscvImCompare/Memory.lean` | load and store agreement between byte and doubleword memories |
@@ -285,6 +343,10 @@ are **properties checked to agree**.
 | `RiscvImCompare/SimStep.lean` | per-instruction simulation and `step_sim` |
 | `RiscvImCompare/Main.lean` | `zkvmConfig`, `machineSem_l3_iff_zkvm`, `panToTargetCompileSemanticsZkvm`, `zOfL3` |
 | `RiscvImCompare/Differences.lean` | formalised memory-access differences |
+| `RiscvImCompare/SimShared.lean` | step simulation for the 13 shared instructions Flapjack never emits |
+| `RiscvImCompare/ArbitraryStep.lean` | `step_sim_word` (50 instructions, arbitrary words), `run_sim`, ECALL/EBREAK in L3 |
+| `RiscvImCompare/DecodeAgree.lean` | decoder agreement on all 32-bit words; SYSTEM disagreements |
+| `RiscvImCompare/ArbitraryCode.lean` | `step_sim_nonsystem`, `both_reject_nonsystem`, `run_sim_nonsystem` |
 | `RiscvImCompare/Axioms.lean` | axiom audit |
 
 ## Building

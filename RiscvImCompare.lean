@@ -8,4 +8,8 @@ import RiscvImCompare.L3Step
 import RiscvImCompare.SimStep
 import RiscvImCompare.Main
 import RiscvImCompare.Differences
+import RiscvImCompare.SimShared
+import RiscvImCompare.ArbitraryStep
+import RiscvImCompare.DecodeAgree
+import RiscvImCompare.ArbitraryCode
 import RiscvImCompare.Axioms

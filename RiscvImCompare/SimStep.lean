@@ -60,7 +60,7 @@ theorem regs_write {C : BitVec 64 → Prop} {ms : riscv_state} {z : ZState} (hR 
 
 /-- Fall-through register write (ALU and load instructions). -/
 theorem sim_write {C : BitVec 64 → Prop} {ms : riscv_state} {z : ZState} (hR : Rel C ms z)
-    {i : instruction} (h : AtPc ms i) (rd : BitVec 5) (v : BitVec 64)
+    {i : instruction} {w : BitVec 32} (h : AtPcW ms w i) (rd : BitVec 5) (v : BitVec 64)
     (hrun : Run i (fetched ms) = «write'GPR» (v, rd) (fetched ms))
     (hz : RiscvZkvm.Rv64.step z.m = some ((z.m.setReg (regOfBits rd) v).setPC (z.m.pc + 4))) :
     ∃ ms' m', Step.NextRISCV ms = some ms' ∧ RiscvZkvm.Rv64.step z.m = some m' ∧
@@ -135,7 +135,7 @@ def StepsAgree (C : BitVec 64 → Prop) (ms : riscv_state) (z : ZState) : Prop :
     Rel C ms' ⟨m', true⟩
 
 theorem sim_write' {C : BitVec 64 → Prop} {ms : riscv_state} {z : ZState} (hR : Rel C ms z)
-    {i : instruction} (h : AtPc ms i) (rd : BitVec 5) (v zv : BitVec 64)
+    {i : instruction} {w : BitVec 32} (h : AtPcW ms w i) (rd : BitVec 5) (v zv : BitVec 64)
     (hrun : Run i (fetched ms) = «write'GPR» (v, rd) (fetched ms))
     (hz : RiscvZkvm.Rv64.step z.m = some ((z.m.setReg (regOfBits rd) zv).setPC (z.m.pc + 4)))
     (hv : v = zv) : StepsAgree C ms z := by
@@ -157,37 +157,37 @@ section ALU
 variable {C : BitVec 64 → Prop} {ms : riscv_state} {z : ZState} (hR : Rel C ms z)
 include hR
 
-theorem sim_ADD (rd rs1 rs2 : BitVec 5) (h : AtPc ms (.ArithR (.ADD (rd, rs1, rs2))))
+theorem sim_ADD (rd rs1 rs2 : BitVec 5) {w : BitVec 32} (h : AtPcW ms w (.ArithR (.ADD (rd, rs1, rs2))))
     (hc : z.m.code z.m.pc = some (.ADD (regOfBits rd) (regOfBits rs1) (regOfBits rs2))) :
     StepsAgree C ms z :=
   sim_write' hR h rd _ _ rfl (by zstep) (by simp only [GPR_fetched, GPR_eq C hR])
 
-theorem sim_SUB (rd rs1 rs2 : BitVec 5) (h : AtPc ms (.ArithR (.SUB (rd, rs1, rs2))))
+theorem sim_SUB (rd rs1 rs2 : BitVec 5) {w : BitVec 32} (h : AtPcW ms w (.ArithR (.SUB (rd, rs1, rs2))))
     (hc : z.m.code z.m.pc = some (.SUB (regOfBits rd) (regOfBits rs1) (regOfBits rs2))) :
     StepsAgree C ms z :=
   sim_write' hR h rd _ _ rfl (by zstep) (by simp only [GPR_fetched, GPR_eq C hR])
 
-theorem sim_AND (rd rs1 rs2 : BitVec 5) (h : AtPc ms (.ArithR (.AND (rd, rs1, rs2))))
+theorem sim_AND (rd rs1 rs2 : BitVec 5) {w : BitVec 32} (h : AtPcW ms w (.ArithR (.AND (rd, rs1, rs2))))
     (hc : z.m.code z.m.pc = some (.AND (regOfBits rd) (regOfBits rs1) (regOfBits rs2))) :
     StepsAgree C ms z :=
   sim_write' hR h rd _ _ rfl (by zstep) (by simp only [GPR_fetched, GPR_eq C hR])
 
-theorem sim_OR (rd rs1 rs2 : BitVec 5) (h : AtPc ms (.ArithR (.OR (rd, rs1, rs2))))
+theorem sim_OR (rd rs1 rs2 : BitVec 5) {w : BitVec 32} (h : AtPcW ms w (.ArithR (.OR (rd, rs1, rs2))))
     (hc : z.m.code z.m.pc = some (.OR (regOfBits rd) (regOfBits rs1) (regOfBits rs2))) :
     StepsAgree C ms z :=
   sim_write' hR h rd _ _ rfl (by zstep) (by simp only [GPR_fetched, GPR_eq C hR])
 
-theorem sim_XOR (rd rs1 rs2 : BitVec 5) (h : AtPc ms (.ArithR (.XOR (rd, rs1, rs2))))
+theorem sim_XOR (rd rs1 rs2 : BitVec 5) {w : BitVec 32} (h : AtPcW ms w (.ArithR (.XOR (rd, rs1, rs2))))
     (hc : z.m.code z.m.pc = some (.XOR (regOfBits rd) (regOfBits rs1) (regOfBits rs2))) :
     StepsAgree C ms z :=
   sim_write' hR h rd _ _ rfl (by zstep) (by simp only [GPR_fetched, GPR_eq C hR])
 
-theorem sim_MUL (rd rs1 rs2 : BitVec 5) (h : AtPc ms (.MulDiv (.MUL (rd, rs1, rs2))))
+theorem sim_MUL (rd rs1 rs2 : BitVec 5) {w : BitVec 32} (h : AtPcW ms w (.MulDiv (.MUL (rd, rs1, rs2))))
     (hc : z.m.code z.m.pc = some (.MUL (regOfBits rd) (regOfBits rs1) (regOfBits rs2))) :
     StepsAgree C ms z :=
   sim_write' hR h rd _ _ rfl (by zstep) (by simp only [GPR_fetched, GPR_eq C hR])
 
-theorem sim_DIV (rd rs1 rs2 : BitVec 5) (h : AtPc ms (.MulDiv (.DIV (rd, rs1, rs2))))
+theorem sim_DIV (rd rs1 rs2 : BitVec 5) {w : BitVec 32} (h : AtPcW ms w (.MulDiv (.DIV (rd, rs1, rs2))))
     (hc : z.m.code z.m.pc = some (.DIV (regOfBits rd) (regOfBits rs1) (regOfBits rs2))) :
     StepsAgree C ms z := by
   refine sim_write' hR h rd
@@ -196,7 +196,7 @@ theorem sim_DIV (rd rs1 rs2 : BitVec 5) (h : AtPc ms (.MulDiv (.DIV (rd, rs1, rs
   · by_cases hb : (GPR rs2 ms == BitVec.ofNat 64 0) = true <;> simp [Run, «dfn'DIV», GPR_fetched, hb]
   · rw [div_eq]; simp only [GPR_eq C hR]
 
-theorem sim_MULHU (rd rs1 rs2 : BitVec 5) (h : AtPc ms (.MulDiv (.MULHU (rd, rs1, rs2))))
+theorem sim_MULHU (rd rs1 rs2 : BitVec 5) {w : BitVec 32} (h : AtPcW ms w (.MulDiv (.MULHU (rd, rs1, rs2))))
     (hc : z.m.code z.m.pc = some (.MULHU (regOfBits rd) (regOfBits rs1) (regOfBits rs2))) :
     StepsAgree C ms z := by
   refine sim_write' hR h rd
@@ -205,14 +205,14 @@ theorem sim_MULHU (rd rs1 rs2 : BitVec 5) (h : AtPc ms (.MulDiv (.MULHU (rd, rs1
   · simp only [Run, «dfn'MULHU», in32_fetched h.ok, GPR_fetched, Bool.false_eq_true, if_false]
   · rw [mulhu_eq]; simp only [GPR_eq C hR]
 
-theorem sim_SLTU (rd rs1 rs2 : BitVec 5) (h : AtPc ms (.ArithR (.SLTU (rd, rs1, rs2))))
+theorem sim_SLTU (rd rs1 rs2 : BitVec 5) {w : BitVec 32} (h : AtPcW ms w (.ArithR (.SLTU (rd, rs1, rs2))))
     (hc : z.m.code z.m.pc = some (.SLTU (regOfBits rd) (regOfBits rs1) (regOfBits rs2))) :
     StepsAgree C ms z := by
   refine sim_write' hR h rd (holV2w 64 [BitVec.ult (GPR rs1 ms) (GPR rs2 ms)]) _ ?_ (by zstep) ?_
   · simp only [Run, «dfn'SLTU», in32_fetched h.ok, GPR_fetched, Bool.false_eq_true, if_false]
   · rw [holV2w_bool]; simp [GPR_eq C hR]
 
-theorem sim_SLL (rd rs1 rs2 : BitVec 5) (h : AtPc ms (.Shift (.SLL (rd, rs1, rs2))))
+theorem sim_SLL (rd rs1 rs2 : BitVec 5) {w : BitVec 32} (h : AtPcW ms w (.Shift (.SLL (rd, rs1, rs2))))
     (hc : z.m.code z.m.pc = some (.SLL (regOfBits rd) (regOfBits rs1) (regOfBits rs2))) :
     StepsAgree C ms z := by
   refine sim_write' hR h rd
@@ -220,7 +220,7 @@ theorem sim_SLL (rd rs1 rs2 : BitVec 5) (h : AtPc ms (.Shift (.SLL (rd, rs1, rs2
   · simp only [Run, «dfn'SLL», in32_fetched h.ok, GPR_fetched, Bool.false_eq_true, if_false]
   · rw [shamt_eq]; simp only [GPR_eq C hR]
 
-theorem sim_SRL (rd rs1 rs2 : BitVec 5) (h : AtPc ms (.Shift (.SRL (rd, rs1, rs2))))
+theorem sim_SRL (rd rs1 rs2 : BitVec 5) {w : BitVec 32} (h : AtPcW ms w (.Shift (.SRL (rd, rs1, rs2))))
     (hc : z.m.code z.m.pc = some (.SRL (regOfBits rd) (regOfBits rs1) (regOfBits rs2))) :
     StepsAgree C ms z := by
   refine sim_write' hR h rd
@@ -228,7 +228,7 @@ theorem sim_SRL (rd rs1 rs2 : BitVec 5) (h : AtPc ms (.Shift (.SRL (rd, rs1, rs2
   · simp only [Run, «dfn'SRL», in32_fetched h.ok, GPR_fetched, Bool.false_eq_true, if_false]
   · rw [shamt_eq]; simp only [GPR_eq C hR]
 
-theorem sim_SRA (rd rs1 rs2 : BitVec 5) (h : AtPc ms (.Shift (.SRA (rd, rs1, rs2))))
+theorem sim_SRA (rd rs1 rs2 : BitVec 5) {w : BitVec 32} (h : AtPcW ms w (.Shift (.SRA (rd, rs1, rs2))))
     (hc : z.m.code z.m.pc = some (.SRA (regOfBits rd) (regOfBits rs1) (regOfBits rs2))) :
     StepsAgree C ms z := by
   refine sim_write' hR h rd
@@ -237,7 +237,7 @@ theorem sim_SRA (rd rs1 rs2 : BitVec 5) (h : AtPc ms (.Shift (.SRA (rd, rs1, rs2
   · simp only [Run, «dfn'SRA», in32_fetched h.ok, GPR_fetched, Bool.false_eq_true, if_false]
   · rw [shamt_eq]; simp only [GPR_eq C hR]
 
-theorem sim_SLLI (rd rs1 : BitVec 5) (sh : BitVec 6) (h : AtPc ms (.Shift (.SLLI (rd, rs1, sh))))
+theorem sim_SLLI (rd rs1 : BitVec 5) (sh : BitVec 6) {w : BitVec 32} (h : AtPcW ms w (.Shift (.SLLI (rd, rs1, sh))))
     (hc : z.m.code z.m.pc = some (.SLLI (regOfBits rd) (regOfBits rs1) sh)) :
     StepsAgree C ms z := by
   refine sim_write' hR h rd (GPR rs1 ms <<< sh.toNat) _ ?_ (by zstep) ?_
@@ -245,7 +245,7 @@ theorem sim_SLLI (rd rs1 : BitVec 5) (sh : BitVec 6) (h : AtPc ms (.Shift (.SLLI
       Bool.false_and]
   · simp only [GPR_eq C hR]
 
-theorem sim_SRLI (rd rs1 : BitVec 5) (sh : BitVec 6) (h : AtPc ms (.Shift (.SRLI (rd, rs1, sh))))
+theorem sim_SRLI (rd rs1 : BitVec 5) (sh : BitVec 6) {w : BitVec 32} (h : AtPcW ms w (.Shift (.SRLI (rd, rs1, sh))))
     (hc : z.m.code z.m.pc = some (.SRLI (regOfBits rd) (regOfBits rs1) sh)) :
     StepsAgree C ms z := by
   refine sim_write' hR h rd (GPR rs1 ms >>> sh.toNat) _ ?_ (by zstep) ?_
@@ -253,7 +253,7 @@ theorem sim_SRLI (rd rs1 : BitVec 5) (sh : BitVec 6) (h : AtPc ms (.Shift (.SRLI
       Bool.false_and]
   · simp only [GPR_eq C hR]
 
-theorem sim_SRAI (rd rs1 : BitVec 5) (sh : BitVec 6) (h : AtPc ms (.Shift (.SRAI (rd, rs1, sh))))
+theorem sim_SRAI (rd rs1 : BitVec 5) (sh : BitVec 6) {w : BitVec 32} (h : AtPcW ms w (.Shift (.SRAI (rd, rs1, sh))))
     (hc : z.m.code z.m.pc = some (.SRAI (regOfBits rd) (regOfBits rs1) sh)) :
     StepsAgree C ms z := by
   refine sim_write' hR h rd (BitVec.sshiftRight (GPR rs1 ms) sh.toNat) _ ?_ (by zstep) ?_
@@ -261,36 +261,36 @@ theorem sim_SRAI (rd rs1 : BitVec 5) (sh : BitVec 6) (h : AtPc ms (.Shift (.SRAI
       Bool.false_and]
   · simp only [GPR_eq C hR]
 
-theorem sim_ADDI (rd rs1 : BitVec 5) (imm : BitVec 12) (h : AtPc ms (.ArithI (.ADDI (rd, rs1, imm))))
+theorem sim_ADDI (rd rs1 : BitVec 5) (imm : BitVec 12) {w : BitVec 32} (h : AtPcW ms w (.ArithI (.ADDI (rd, rs1, imm))))
     (hc : z.m.code z.m.pc = some (.ADDI (regOfBits rd) (regOfBits rs1) imm)) :
     StepsAgree C ms z :=
   sim_write' hR h rd _ _ rfl (by zstep)
     (by simp only [GPR_fetched, GPR_eq C hR, RiscvZkvm.Rv64.signExtend12])
 
-theorem sim_ANDI (rd rs1 : BitVec 5) (imm : BitVec 12) (h : AtPc ms (.ArithI (.ANDI (rd, rs1, imm))))
+theorem sim_ANDI (rd rs1 : BitVec 5) (imm : BitVec 12) {w : BitVec 32} (h : AtPcW ms w (.ArithI (.ANDI (rd, rs1, imm))))
     (hc : z.m.code z.m.pc = some (.ANDI (regOfBits rd) (regOfBits rs1) imm)) :
     StepsAgree C ms z :=
   sim_write' hR h rd _ _ rfl (by zstep)
     (by simp only [GPR_fetched, GPR_eq C hR, RiscvZkvm.Rv64.signExtend12])
 
-theorem sim_ORI (rd rs1 : BitVec 5) (imm : BitVec 12) (h : AtPc ms (.ArithI (.ORI (rd, rs1, imm))))
+theorem sim_ORI (rd rs1 : BitVec 5) (imm : BitVec 12) {w : BitVec 32} (h : AtPcW ms w (.ArithI (.ORI (rd, rs1, imm))))
     (hc : z.m.code z.m.pc = some (.ORI (regOfBits rd) (regOfBits rs1) imm)) :
     StepsAgree C ms z :=
   sim_write' hR h rd _ _ rfl (by zstep)
     (by simp only [GPR_fetched, GPR_eq C hR, RiscvZkvm.Rv64.signExtend12])
 
-theorem sim_XORI (rd rs1 : BitVec 5) (imm : BitVec 12) (h : AtPc ms (.ArithI (.XORI (rd, rs1, imm))))
+theorem sim_XORI (rd rs1 : BitVec 5) (imm : BitVec 12) {w : BitVec 32} (h : AtPcW ms w (.ArithI (.XORI (rd, rs1, imm))))
     (hc : z.m.code z.m.pc = some (.XORI (regOfBits rd) (regOfBits rs1) imm)) :
     StepsAgree C ms z :=
   sim_write' hR h rd _ _ rfl (by zstep)
     (by simp only [GPR_fetched, GPR_eq C hR, RiscvZkvm.Rv64.signExtend12])
 
-theorem sim_LUI (rd : BitVec 5) (imm : BitVec 20) (h : AtPc ms (.ArithI (.LUI (rd, imm))))
+theorem sim_LUI (rd : BitVec 5) (imm : BitVec 20) {w : BitVec 32} (h : AtPcW ms w (.ArithI (.LUI (rd, imm))))
     (hc : z.m.code z.m.pc = some (.LUI (regOfBits rd) imm)) :
     StepsAgree C ms z :=
   sim_write' hR h rd _ _ rfl (by zstep) (lui_eq imm)
 
-theorem sim_AUIPC (rd : BitVec 5) (imm : BitVec 20) (h : AtPc ms (.ArithI (.AUIPC (rd, imm))))
+theorem sim_AUIPC (rd : BitVec 5) (imm : BitVec 20) {w : BitVec 32} (h : AtPcW ms w (.ArithI (.AUIPC (rd, imm))))
     (hc : z.m.code z.m.pc = some (.AUIPC (regOfBits rd) imm)) :
     StepsAgree C ms z :=
   sim_write' hR h rd _ _ rfl (by zstep) (by rw [PC_fetched, hR.pc, lui_eq]; rfl)
@@ -313,7 +313,7 @@ section Loads
 variable {C : BitVec 64 → Prop} {ms : riscv_state} {z : ZState} (hR : Rel C ms z)
 include hR
 
-theorem sim_LD (rd rs1 : BitVec 5) (off : BitVec 12) (h : AtPc ms (.Load (.LD (rd, rs1, off))))
+theorem sim_LD (rd rs1 : BitVec 5) (off : BitVec 12) {w : BitVec 32} (h : AtPcW ms w (.Load (.LD (rd, rs1, off))))
     (hc : z.m.code z.m.pc = some (.LD (regOfBits rd) (regOfBits rs1) off))
     (hs : MemSafe C ms (.Load (.LD (rd, rs1, off)))) :
     StepsAgree C ms z := by
@@ -328,7 +328,7 @@ theorem sim_LD (rd rs1 : BitVec 5) (off : BitVec 12) (h : AtPc ms (.Load (.LD (r
   · rw [GPR_eq C hR] at hs ⊢
     exact (load_ld hR.mem _ (aligned8_of_valid hs)).symm
 
-theorem sim_LWU (rd rs1 : BitVec 5) (off : BitVec 12) (h : AtPc ms (.Load (.LWU (rd, rs1, off))))
+theorem sim_LWU (rd rs1 : BitVec 5) (off : BitVec 12) {w : BitVec 32} (h : AtPcW ms w (.Load (.LWU (rd, rs1, off))))
     (hc : z.m.code z.m.pc = some (.LWU (regOfBits rd) (regOfBits rs1) off))
     (hs : MemSafe C ms (.Load (.LWU (rd, rs1, off)))) :
     StepsAgree C ms z := by
@@ -344,7 +344,7 @@ theorem sim_LWU (rd rs1 : BitVec 5) (off : BitVec 12) (h : AtPc ms (.Load (.LWU 
   · rw [GPR_eq C hR] at hs ⊢
     exact (load_lwu hR.mem _ (aligned4_of_valid hs)).symm
 
-theorem sim_LHU (rd rs1 : BitVec 5) (off : BitVec 12) (h : AtPc ms (.Load (.LHU (rd, rs1, off))))
+theorem sim_LHU (rd rs1 : BitVec 5) (off : BitVec 12) {w : BitVec 32} (h : AtPcW ms w (.Load (.LHU (rd, rs1, off))))
     (hc : z.m.code z.m.pc = some (.LHU (regOfBits rd) (regOfBits rs1) off))
     (hs : MemSafe C ms (.Load (.LHU (rd, rs1, off)))) :
     StepsAgree C ms z := by
@@ -359,7 +359,7 @@ theorem sim_LHU (rd rs1 : BitVec 5) (off : BitVec 12) (h : AtPc ms (.Load (.LHU 
   · rw [GPR_eq C hR] at hs ⊢
     exact (load_lhu hR.mem _ (aligned2_of_valid hs)).symm
 
-theorem sim_LBU (rd rs1 : BitVec 5) (off : BitVec 12) (h : AtPc ms (.Load (.LBU (rd, rs1, off))))
+theorem sim_LBU (rd rs1 : BitVec 5) (off : BitVec 12) {w : BitVec 32} (h : AtPcW ms w (.Load (.LBU (rd, rs1, off))))
     (hc : z.m.code z.m.pc = some (.LBU (regOfBits rd) (regOfBits rs1) off))
     (hs : MemSafe C ms (.Load (.LBU (rd, rs1, off)))) :
     StepsAgree C ms z := by
@@ -390,7 +390,7 @@ theorem l3Word_frame {m m' : BitVec 64 → BitVec 8} {a : BitVec 64}
 
 /-- Generic store simulation. -/
 theorem sim_store {C : BitVec 64 → Prop} {ms : riscv_state} {z : ZState} (hR : Rel C ms z)
-    {i : instruction} (h : AtPc ms i) (p v : BitVec 64) (n : Nat)
+    {i : instruction} {w : BitVec 32} (h : AtPcW ms w i) (p v : BitVec 64) (n : Nat)
     (hn : n = 1 ∨ n = 2 ∨ n = 4 ∨ n = 8) (hp : p.toNat % n = 0) (hnc : NoCodeWrite C p n)
     (hrun : Run i (fetched ms) = rawWriteData (p, v, n) (fetched ms))
     (m1 : MachineState) (hregs : m1.regs = z.m.regs) (hcode : m1.code = z.m.code)
@@ -425,7 +425,7 @@ section Stores
 variable {C : BitVec 64 → Prop} {ms : riscv_state} {z : ZState} (hR : Rel C ms z)
 include hR
 
-theorem sim_SD (rs1 rs2 : BitVec 5) (off : BitVec 12) (h : AtPc ms (.Store (.SD (rs1, rs2, off))))
+theorem sim_SD (rs1 rs2 : BitVec 5) (off : BitVec 12) {w : BitVec 32} (h : AtPcW ms w (.Store (.SD (rs1, rs2, off))))
     (hc : z.m.code z.m.pc = some (.SD (regOfBits rs1) (regOfBits rs2) off))
     (hs : MemSafe C ms (.Store (.SD (rs1, rs2, off)))) :
     StepsAgree C ms z := by
@@ -442,7 +442,7 @@ theorem sim_SD (rs1 rs2 : BitVec 5) (off : BitVec 12) (h : AtPc ms (.Store (.SD 
   · rw [RiscvZkvm.Rv64.step_sd hc hv]
     simp only [RiscvZkvm.Rv64.execInstrBr, GPR_eq C hR, RiscvZkvm.Rv64.signExtend12]
 
-theorem sim_SW (rs1 rs2 : BitVec 5) (off : BitVec 12) (h : AtPc ms (.Store (.SW (rs1, rs2, off))))
+theorem sim_SW (rs1 rs2 : BitVec 5) (off : BitVec 12) {w : BitVec 32} (h : AtPcW ms w (.Store (.SW (rs1, rs2, off))))
     (hc : z.m.code z.m.pc = some (.SW (regOfBits rs1) (regOfBits rs2) off))
     (hs : MemSafe C ms (.Store (.SW (rs1, rs2, off)))) :
     StepsAgree C ms z := by
@@ -458,7 +458,7 @@ theorem sim_SW (rs1 rs2 : BitVec 5) (off : BitVec 12) (h : AtPc ms (.Store (.SW 
   · rw [RiscvZkvm.Rv64.step_sw hc hv]
     simp only [RiscvZkvm.Rv64.execInstrBr, GPR_eq C hR, RiscvZkvm.Rv64.signExtend12]
 
-theorem sim_SH (rs1 rs2 : BitVec 5) (off : BitVec 12) (h : AtPc ms (.Store (.SH (rs1, rs2, off))))
+theorem sim_SH (rs1 rs2 : BitVec 5) (off : BitVec 12) {w : BitVec 32} (h : AtPcW ms w (.Store (.SH (rs1, rs2, off))))
     (hc : z.m.code z.m.pc = some (.SH (regOfBits rs1) (regOfBits rs2) off))
     (hs : MemSafe C ms (.Store (.SH (rs1, rs2, off)))) :
     StepsAgree C ms z := by
@@ -474,7 +474,7 @@ theorem sim_SH (rs1 rs2 : BitVec 5) (off : BitVec 12) (h : AtPc ms (.Store (.SH 
   · rw [RiscvZkvm.Rv64.step_sh hc hv]
     simp only [RiscvZkvm.Rv64.execInstrBr, GPR_eq C hR, RiscvZkvm.Rv64.signExtend12]
 
-theorem sim_SB (rs1 rs2 : BitVec 5) (off : BitVec 12) (h : AtPc ms (.Store (.SB (rs1, rs2, off))))
+theorem sim_SB (rs1 rs2 : BitVec 5) (off : BitVec 12) {w : BitVec 32} (h : AtPcW ms w (.Store (.SB (rs1, rs2, off))))
     (hc : z.m.code z.m.pc = some (.SB (regOfBits rs1) (regOfBits rs2) off))
     (hs : MemSafe C ms (.Store (.SB (rs1, rs2, off)))) :
     StepsAgree C ms z := by
@@ -514,7 +514,7 @@ theorem signExtend_append_zero {n : Nat} (w : BitVec n) (hn : n + 1 ≤ 64) :
       | succ n => intro _; omega
 
 theorem sim_branch {C : BitVec 64 → Prop} {ms : riscv_state} {z : ZState} (hR : Rel C ms z)
-    {i : instruction} (h : AtPc ms i) (b : Bool) (a : BitVec 64)
+    {i : instruction} {w : BitVec 32} (h : AtPcW ms w i) (b : Bool) (a : BitVec 64)
     (hrun : Run i (fetched ms) = if b then branchTo a (fetched ms) else fetched ms)
     (hz : RiscvZkvm.Rv64.step z.m = some (z.m.setPC (if b then a else z.m.pc + 4))) :
     StepsAgree C ms z := by
@@ -547,7 +547,7 @@ theorem sim_branch {C : BitVec 64 → Prop} {ms : riscv_state} {z : ZState} (hR 
     · intro a ha; exact hR.code a ha
 
 theorem sim_jump {C : BitVec 64 → Prop} {ms : riscv_state} {z : ZState} (hR : Rel C ms z)
-    {i : instruction} (h : AtPc ms i) (rd : BitVec 5) (a : BitVec 64)
+    {i : instruction} {w : BitVec 32} (h : AtPcW ms w i) (rd : BitVec 5) (a : BitVec 64)
     (hrun : Run i (fetched ms) =
       branchTo a («write'GPR» (ms.c_PC ms.procID + 4, rd) (fetched ms)))
     (hz : RiscvZkvm.Rv64.step z.m =
@@ -601,7 +601,7 @@ section Branches
 variable {C : BitVec 64 → Prop} {ms : riscv_state} {z : ZState} (hR : Rel C ms z)
 include hR
 
-theorem sim_BEQ (rs1 rs2 : BitVec 5) (off : BitVec 12) (h : AtPc ms (.Branch (.BEQ (rs1, rs2, off))))
+theorem sim_BEQ (rs1 rs2 : BitVec 5) (off : BitVec 12) {w : BitVec 32} (h : AtPcW ms w (.Branch (.BEQ (rs1, rs2, off))))
     (hc : z.m.code z.m.pc = some (.BEQ (regOfBits rs1) (regOfBits rs2) (off ++ 0#1))) :
     StepsAgree C ms z := by
   refine sim_branch hR h (GPR rs1 ms == GPR rs2 ms)
@@ -614,7 +614,7 @@ theorem sim_BEQ (rs1 rs2 : BitVec 5) (off : BitVec 12) (h : AtPc ms (.Branch (.B
       signExtend_append_zero off (by omega), hR.pc]
     split <;> simp_all [sle_eq_not_slt]
 
-theorem sim_BNE (rs1 rs2 : BitVec 5) (off : BitVec 12) (h : AtPc ms (.Branch (.BNE (rs1, rs2, off))))
+theorem sim_BNE (rs1 rs2 : BitVec 5) (off : BitVec 12) {w : BitVec 32} (h : AtPcW ms w (.Branch (.BNE (rs1, rs2, off))))
     (hc : z.m.code z.m.pc = some (.BNE (regOfBits rs1) (regOfBits rs2) (off ++ 0#1))) :
     StepsAgree C ms z := by
   refine sim_branch hR h (!(GPR rs1 ms == GPR rs2 ms))
@@ -627,7 +627,7 @@ theorem sim_BNE (rs1 rs2 : BitVec 5) (off : BitVec 12) (h : AtPc ms (.Branch (.B
       signExtend_append_zero off (by omega), hR.pc]
     split <;> simp_all [sle_eq_not_slt]
 
-theorem sim_BLT (rs1 rs2 : BitVec 5) (off : BitVec 12) (h : AtPc ms (.Branch (.BLT (rs1, rs2, off))))
+theorem sim_BLT (rs1 rs2 : BitVec 5) (off : BitVec 12) {w : BitVec 32} (h : AtPcW ms w (.Branch (.BLT (rs1, rs2, off))))
     (hc : z.m.code z.m.pc = some (.BLT (regOfBits rs1) (regOfBits rs2) (off ++ 0#1))) :
     StepsAgree C ms z := by
   refine sim_branch hR h (BitVec.slt (GPR rs1 ms) (GPR rs2 ms))
@@ -640,7 +640,7 @@ theorem sim_BLT (rs1 rs2 : BitVec 5) (off : BitVec 12) (h : AtPc ms (.Branch (.B
       signExtend_append_zero off (by omega), hR.pc]
     split <;> simp_all [sle_eq_not_slt]
 
-theorem sim_BLTU (rs1 rs2 : BitVec 5) (off : BitVec 12) (h : AtPc ms (.Branch (.BLTU (rs1, rs2, off))))
+theorem sim_BLTU (rs1 rs2 : BitVec 5) (off : BitVec 12) {w : BitVec 32} (h : AtPcW ms w (.Branch (.BLTU (rs1, rs2, off))))
     (hc : z.m.code z.m.pc = some (.BLTU (regOfBits rs1) (regOfBits rs2) (off ++ 0#1))) :
     StepsAgree C ms z := by
   refine sim_branch hR h (BitVec.ult (GPR rs1 ms) (GPR rs2 ms))
@@ -653,7 +653,7 @@ theorem sim_BLTU (rs1 rs2 : BitVec 5) (off : BitVec 12) (h : AtPc ms (.Branch (.
       signExtend_append_zero off (by omega), hR.pc]
     split <;> simp_all [sle_eq_not_slt]
 
-theorem sim_BGE (rs1 rs2 : BitVec 5) (off : BitVec 12) (h : AtPc ms (.Branch (.BGE (rs1, rs2, off))))
+theorem sim_BGE (rs1 rs2 : BitVec 5) (off : BitVec 12) {w : BitVec 32} (h : AtPcW ms w (.Branch (.BGE (rs1, rs2, off))))
     (hc : z.m.code z.m.pc = some (.BGE (regOfBits rs1) (regOfBits rs2) (off ++ 0#1))) :
     StepsAgree C ms z := by
   refine sim_branch hR h (BitVec.sle (GPR rs2 ms) (GPR rs1 ms))
@@ -666,7 +666,7 @@ theorem sim_BGE (rs1 rs2 : BitVec 5) (off : BitVec 12) (h : AtPc ms (.Branch (.B
       signExtend_append_zero off (by omega), hR.pc]
     split <;> simp_all [sle_eq_not_slt]
 
-theorem sim_BGEU (rs1 rs2 : BitVec 5) (off : BitVec 12) (h : AtPc ms (.Branch (.BGEU (rs1, rs2, off))))
+theorem sim_BGEU (rs1 rs2 : BitVec 5) (off : BitVec 12) {w : BitVec 32} (h : AtPcW ms w (.Branch (.BGEU (rs1, rs2, off))))
     (hc : z.m.code z.m.pc = some (.BGEU (regOfBits rs1) (regOfBits rs2) (off ++ 0#1))) :
     StepsAgree C ms z := by
   refine sim_branch hR h (!(BitVec.ult (GPR rs1 ms) (GPR rs2 ms)))
@@ -682,7 +682,7 @@ theorem sim_BGEU (rs1 rs2 : BitVec 5) (off : BitVec 12) (h : AtPc ms (.Branch (.
 
 theorem jalr_mask : BitVec.signExtend 64 (BitVec.ofNat 2 2) = ~~~1#64 := by decide
 
-theorem sim_JAL (rd : BitVec 5) (imm : BitVec 20) (h : AtPc ms (.Branch (.JAL (rd, imm))))
+theorem sim_JAL (rd : BitVec 5) (imm : BitVec 20) {w : BitVec 32} (h : AtPcW ms w (.Branch (.JAL (rd, imm))))
     (hc : z.m.code z.m.pc = some (.JAL (regOfBits rd) (imm ++ 0#1))) :
     StepsAgree C ms z := by
   refine sim_jump hR h rd (ms.c_PC ms.procID + (BitVec.signExtend 64 imm <<< 1)) ?_ ?_
@@ -693,7 +693,7 @@ theorem sim_JAL (rd : BitVec 5) (imm : BitVec 20) (h : AtPc ms (.Branch (.JAL (r
     simp only [RiscvZkvm.Rv64.execInstrBr, RiscvZkvm.Rv64.signExtend21,
       signExtend_append_zero imm (by omega), hR.pc]
 
-theorem sim_JALR (rd rs1 : BitVec 5) (imm : BitVec 12) (h : AtPc ms (.Branch (.JALR (rd, rs1, imm))))
+theorem sim_JALR (rd rs1 : BitVec 5) (imm : BitVec 12) {w : BitVec 32} (h : AtPcW ms w (.Branch (.JALR (rd, rs1, imm))))
     (hc : z.m.code z.m.pc = some (.JALR (regOfBits rd) (regOfBits rs1) imm)) :
     StepsAgree C ms z := by
   refine sim_jump hR h rd ((GPR rs1 ms + BitVec.signExtend 64 imm) &&& ~~~1#64) ?_ ?_
@@ -721,7 +721,7 @@ theorem step_sim (C : BitVec 64 → Prop) (ms : riscv_state) (z : ZState) (hR : 
     (henc : encodedBytesInMemHOL riscvConfig (ms.c_PC ms.procID) ms.MEM8 dom)
     (hs : SafeL3 C ms) : Rel C (riscvNext ms) (zNext z) := by
   obtain ⟨i, hi, hw, b0, b1, b2, b3, -⟩ := encodedBytes_supported _ _ _ henc
-  have hat : AtPc ms i := ⟨hok, hi, b0, b1, b2, b3⟩
+  have hat : AtPcW ms (Encode i) i := (AtPc.mk hok hi b0 b1 b2 b3).toW
   have hc : z.m.code z.m.pc = toZ i := by
     rw [← hR.pc, hR.code _ hs.1, hw, decode_encode_toZ i hi]
   have hms : MemSafe C ms i := by
