@@ -710,4 +710,72 @@ theorem sim_JALR (rd rs1 : BitVec 5) (imm : BitVec 12) (h : AtPc ms (.Branch (.J
 
 end Branches
 
+/-! ### The single-step simulation theorem -/
+
+/-- **Single-step simulation.** If the L3 state and the riscv-zkvm state are
+related, the L3 state is ok, the bytes at the PC encode some `asm` instruction
+(which is exactly when flapjack's evaluator calls `next`), and the step is
+`SafeL3`, then one L3 step and one riscv-zkvm step lead to related states. -/
+theorem step_sim (C : BitVec 64 → Prop) (ms : riscv_state) (z : ZState) (hR : Rel C ms z)
+    (hok : riscvOk ms = true) (dom : BitVec 64 → Prop)
+    (henc : encodedBytesInMemHOL riscvConfig (ms.c_PC ms.procID) ms.MEM8 dom)
+    (hs : SafeL3 C ms) : Rel C (riscvNext ms) (zNext z) := by
+  obtain ⟨i, hi, hw, b0, b1, b2, b3, -⟩ := encodedBytes_supported _ _ _ henc
+  have hat : AtPc ms i := ⟨hok, hi, b0, b1, b2, b3⟩
+  have hc : z.m.code z.m.pc = toZ i := by
+    rw [← hR.pc, hR.code _ hs.1, hw, decode_encode_toZ i hi]
+  have hms : MemSafe C ms i := by
+    have := hs.2
+    rwa [hw, ← Step.DecodeAny_word, l3_decode_encode i hi] at this
+  have key : StepsAgree C ms z := by
+    cases i with
+    | ArithI j | ArithR j | Branch j | Load j | MulDiv j | Shift j | Store j =>
+      cases j <;> rename_i p <;>
+        (first
+          | obtain ⟨_, _, _⟩ := (p : BitVec 5 × BitVec 5 × _)
+          | obtain ⟨_, _⟩ := (p : BitVec 5 × BitVec 20)) <;>
+        first
+        | exact absurd rfl hi
+        | exact sim_ADD hR _ _ _ hat hc
+        | exact sim_SUB hR _ _ _ hat hc
+        | exact sim_AND hR _ _ _ hat hc
+        | exact sim_OR hR _ _ _ hat hc
+        | exact sim_XOR hR _ _ _ hat hc
+        | exact sim_SLTU hR _ _ _ hat hc
+        | exact sim_SLL hR _ _ _ hat hc
+        | exact sim_SRL hR _ _ _ hat hc
+        | exact sim_SRA hR _ _ _ hat hc
+        | exact sim_MUL hR _ _ _ hat hc
+        | exact sim_MULHU hR _ _ _ hat hc
+        | exact sim_DIV hR _ _ _ hat hc
+        | exact sim_SLLI hR _ _ _ hat hc
+        | exact sim_SRLI hR _ _ _ hat hc
+        | exact sim_SRAI hR _ _ _ hat hc
+        | exact sim_ADDI hR _ _ _ hat hc
+        | exact sim_ANDI hR _ _ _ hat hc
+        | exact sim_ORI hR _ _ _ hat hc
+        | exact sim_XORI hR _ _ _ hat hc
+        | exact sim_LUI hR _ _ hat hc
+        | exact sim_AUIPC hR _ _ hat hc
+        | exact sim_JAL hR _ _ hat hc
+        | exact sim_JALR hR _ _ _ hat hc
+        | exact sim_BEQ hR _ _ _ hat hc
+        | exact sim_BNE hR _ _ _ hat hc
+        | exact sim_BLT hR _ _ _ hat hc
+        | exact sim_BGE hR _ _ _ hat hc
+        | exact sim_BLTU hR _ _ _ hat hc
+        | exact sim_BGEU hR _ _ _ hat hc
+        | exact sim_LD hR _ _ _ hat hc hms
+        | exact sim_LWU hR _ _ _ hat hc hms
+        | exact sim_LHU hR _ _ _ hat hc hms
+        | exact sim_LBU hR _ _ _ hat hc hms
+        | exact sim_SD hR _ _ _ hat hc hms
+        | exact sim_SW hR _ _ _ hat hc hms
+        | exact sim_SH hR _ _ _ hat hc hms
+        | exact sim_SB hR _ _ _ hat hc hms
+    | _ => exact absurd rfl hi
+  obtain ⟨ms', m', h1, h2, h3⟩ := key
+  rw [riscvNext_of_some h1, zNext_of_some h2]
+  exact h3
+
 end RiscvImCompare
