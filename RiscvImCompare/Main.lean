@@ -180,4 +180,31 @@ theorem panToTargetCompileSemanticsZkvm {σ : Type}
     heap_len adj_ptr2 adj_ptr4 ffi cbspace data_sp start hmc hpre b
     ((machineSem_l3_iff_zkvm C mc hmc.1 nextI ffiI ccacheI hor ffi ms z hR hsafe b).mpr hb)
 
+/-! ## Related initial states exist -/
+
+/-- A riscv-zkvm state built from an L3 state: the same registers, PC and
+memory, and the instructions at the addresses `C` decoded (with riscv-zkvm's
+own decoder) from the L3 memory. -/
+noncomputable def zOfL3 (C : BitVec 64 → Prop) (ms : riscv_state) : ZState :=
+  open Classical in
+  { m := { regs := fun r => ms.c_gpr ms.procID (BitVec.ofNat 5 r.toNat)
+           mem := fun a => l3Dword ms.MEM8 a
+           code := fun a => if C a then decode (l3Word ms.MEM8 a) else none
+           pc := ms.c_PC ms.procID }
+    ok := riscvOk ms }
+
+theorem rel_zOfL3 (C : BitVec 64 → Prop) (ms : riscv_state) : Rel C ms (zOfL3 C ms) where
+  ok := by
+    simp only [zOfL3, zOk]
+    cases h : riscvOk ms
+    · rfl
+    · have := ((riscvOk_iff ms).mp h).2.2.2.2
+      rw [holAligned_two_iff] at this
+      simp [this]
+  pc := rfl
+  regs := fun r => by
+    simp only [zOfL3, regOfBits_toNat, BitVec.ofNat_toNat, BitVec.setWidth_eq]
+  mem := fun a _ => rfl
+  code := fun a ha => by simp [zOfL3, ha]
+
 end RiscvImCompare
