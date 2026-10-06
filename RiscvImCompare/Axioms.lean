@@ -1,4 +1,5 @@
 import RiscvImCompare.Main
+import RiscvImCompare.ArbitraryStep
 
 /-! Axiom audit of the main results (printed at build time). -/
 
@@ -7,3 +8,6 @@ import RiscvImCompare.Main
 #print axioms RiscvImCompare.machineSem_l3_iff_zkvm
 #print axioms RiscvImCompare.panToTargetCompileSemanticsZkvm
 #print axioms RiscvImCompare.rel_zOfL3
+#print axioms RiscvImCompare.step_sim_word
+#print axioms RiscvImCompare.run_sim
+#print axioms RiscvImCompare.l3_ecall_none
