@@ -316,7 +316,6 @@ theorem decode_encode_toZ (i : Flapjack.RiscV.L3.instruction) (h : RiscvImCompar
     | SLLI p => exact decode_encode_toZ_slli p
     | SRLI p => exact decode_encode_toZ_srli p
     | SRAI p => exact decode_encode_toZ_srai p
-    | _ => exact absurd rfl h
   | MulDiv a =>
     cases a with
     | MUL p => exact decode_encode_toZ_mul p

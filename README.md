@@ -4,7 +4,7 @@ A Lean 4 development comparing two RISC-V semantics:
 
 | | Model | Where |
 |---|---|---|
-| **L3** | Flapjack's L3-derived RV64IM model (`Flapjack.RiscV.L3`, step function `riscvNext`), which Flapjack's Pancake compiler-correctness theorem is stated over | `deps/flapjack`, branch `riscv-im` (pinned at `7981f765c`) |
+| **L3** | Flapjack's L3-derived RV64IM model (`Flapjack.RiscV.L3`, step function `riscvNext`), which Flapjack's Pancake compiler-correctness theorem is stated over | `deps/flapjack`, branch `riscv-im` (pinned at `034bb5a1e`) |
 | **zkvm** | riscv-zkvm's hand-written computable RV64IM model (`RiscvZkvm.Rv64`, step function `RiscvZkvm.Rv64.step`) | `deps/riscv-zkvm`, tag `v0.3.1` (pinned at `93ab6ef`) |
 
 **Comparison criterion.** We do not compare instruction encodings or
@@ -199,12 +199,37 @@ are **properties checked to agree**.
 
 5. **Instruction coverage.**
    - Flapjack's encoder emits only the 37 kinds listed above, and only 32-bit
-     encodings: no compressed instructions and no `*W` word operations.
-   - riscv-zkvm lacks the RV64 word-op family (`ADDW SUBW … REMUW`; see its
-     `docs/validation.md`, known gap 2), but Flapjack never emits these.
-   - L3 models further instructions, and riscv-zkvm models `SLT`, `SLTI`,
-     `SLTIU`, `LW`, `LB`, `LH`, `MULH`, `MULHSU`, `DIVU`, `REM` and `REMU`.
-     None of these is emitted, so they are not compared.
+     encodings.
+   - Since flapjack `riscv-im` commit `034bb5a1e` (PR #1224), L3 no longer
+     models the RV64 word operations (`ADDW SUBW MULW DIVW DIVUW REMW REMUW
+     SLLIW SRLIW SRAIW SLLW SRLW SRAW`), which riscv-zkvm also lacks (its
+     `docs/validation.md`, known gap 2). L3 also rejects every compressed (RVC)
+     parcel: it decodes to `UnknownInstruction`, so `NextRISCV` is `none`
+     (flapjack's `NextRISCV_half_none`).
+   - Both models implement `SLT`, `SLTI`, `SLTIU`, `ADDIW`, `LB`, `LH`, `LW`,
+     `MULH`, `MULHSU`, `DIVU`, `REM`, `REMU`, `FENCE`, `ECALL` and `EBREAK`.
+     Flapjack never emits these, so they are **not** covered by the proofs
+     here; their agreement is unproved.
+   - riscv-zkvm additionally has `CSRS` (ZisK accelerator calls). L3 has no CSR
+     instructions.
+
+   **Arbitrary (non-compiler) RISC-V code is outside the scope of the
+   theorems.** `machineSemHOL` only steps when the bytes at the PC are a
+   flapjack encoder output, so any other instruction ends the run in `error`.
+   Comparing the raw step functions on arbitrary code, the remaining
+   differences are:
+   - `ECALL`: riscv-zkvm runs its syscalls (halt, `write_output`,
+     `read_input`, WRITE); L3 raises an environment-call exception.
+   - `EBREAK`, illegal or compressed instructions, and misaligned jump
+     targets: riscv-zkvm traps (`step = none`); L3 raises an exception.
+   - CSR instructions: riscv-zkvm executes `CSRS` accelerators; L3 treats them
+     as illegal.
+   - Misaligned loads and stores, and addresses outside the zkVM memory map:
+     L3 succeeds; riscv-zkvm traps (item 1).
+   - Self-modifying code: L3 executes the new bytes; riscv-zkvm keeps
+     executing its fixed `code` (item 2).
+   - Whenever L3 raises an exception, flapjack's `riscvNext` is
+     `holThe none`. That is an *unspecified* state, not a defined trap.
 
 6. **State components not related.**
    - L3's CSRs, `Skip`, `NextFetch`, `log`, `ExitCode` and other bookkeeping
@@ -272,7 +297,7 @@ lake build                       # builds the library and runs the axiom audit
 
 - The toolchain is `leanprover/lean4:v4.33.1`, Flapjack's. riscv-zkvm v0.3.1
   pins v4.33.0 and is built from source with v4.33.1 without changes.
-- A cold build compiles Flapjack (about 5,300 modules); this needs a lot of
+- A cold build compiles Flapjack (several thousand modules); this needs a lot of
   memory and CPU time.
 - Use `lake build <Module>` rather than `lake env lean <file>`. With Lake's
   artifact cache enabled, the dependency `.olean`s are only materialised by
