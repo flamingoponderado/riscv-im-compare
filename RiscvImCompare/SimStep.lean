@@ -297,4 +297,83 @@ theorem sim_AUIPC (rd : BitVec 5) (imm : BitVec 20) (h : AtPc ms (.ArithI (.AUIP
 
 end ALU
 
+/-! ### Loads -/
+
+theorem aligned8_of_valid {p : BitVec 64} (h : RiscvZkvm.Rv64.isValidDwordAccess p = true) :
+    p.toNat % 8 = 0 := by
+  simp [RiscvZkvm.Rv64.isValidDwordAccess, RiscvZkvm.Rv64.isAligned8] at h; exact h.2
+theorem aligned4_of_valid {p : BitVec 64} (h : RiscvZkvm.Rv64.isValidMemAccess p = true) :
+    p.toNat % 4 = 0 := by
+  simp [RiscvZkvm.Rv64.isValidMemAccess, RiscvZkvm.Rv64.isAligned4] at h; exact h.2
+theorem aligned2_of_valid {p : BitVec 64} (h : RiscvZkvm.Rv64.isValidHalfwordAccess p = true) :
+    p.toNat % 2 = 0 := by
+  simp [RiscvZkvm.Rv64.isValidHalfwordAccess] at h; exact h.2
+
+section Loads
+variable {C : BitVec 64 → Prop} {ms : riscv_state} {z : ZState} (hR : Rel C ms z)
+include hR
+
+theorem sim_LD (rd rs1 : BitVec 5) (off : BitVec 12) (h : AtPc ms (.Load (.LD (rd, rs1, off))))
+    (hc : z.m.code z.m.pc = some (.LD (regOfBits rd) (regOfBits rs1) off))
+    (hs : MemSafe C ms (.Load (.LD (rd, rs1, off)))) :
+    StepsAgree C ms z := by
+  simp only [MemSafe] at hs
+  have hv : RiscvZkvm.Rv64.isValidDwordAccess
+      (z.m.getReg (regOfBits rs1) + RiscvZkvm.Rv64.signExtend12 off) = true := by
+    rw [← GPR_eq C hR]; exact hs
+  refine sim_write' hR h rd (rawReadData (GPR rs1 ms + BitVec.signExtend 64 off) ms) _ ?_
+    (by rw [RiscvZkvm.Rv64.step_ld hc hv]; rfl) ?_
+  · simp only [Run, «dfn'LD», in32_fetched h.ok, translateAddr, GPR_fetched, Bool.false_eq_true,
+      if_false]; rfl
+  · rw [GPR_eq C hR] at hs ⊢
+    exact (load_ld hR.mem _ (aligned8_of_valid hs)).symm
+
+theorem sim_LWU (rd rs1 : BitVec 5) (off : BitVec 12) (h : AtPc ms (.Load (.LWU (rd, rs1, off))))
+    (hc : z.m.code z.m.pc = some (.LWU (regOfBits rd) (regOfBits rs1) off))
+    (hs : MemSafe C ms (.Load (.LWU (rd, rs1, off)))) :
+    StepsAgree C ms z := by
+  simp only [MemSafe] at hs
+  have hv : RiscvZkvm.Rv64.isValidMemAccess
+      (z.m.getReg (regOfBits rs1) + RiscvZkvm.Rv64.signExtend12 off) = true := by
+    rw [← GPR_eq C hR]; exact hs
+  refine sim_write' hR h rd (BitVec.setWidth 64 (holWordExtract 32 31 0
+    (rawReadData (GPR rs1 ms + BitVec.signExtend 64 off) ms))) _ ?_
+    (by rw [RiscvZkvm.Rv64.step_lwu hc hv]; rfl) ?_
+  · simp only [Run, «dfn'LWU», in32_fetched h.ok, translateAddr, GPR_fetched, Bool.false_eq_true,
+      if_false]; rfl
+  · rw [GPR_eq C hR] at hs ⊢
+    exact (load_lwu hR.mem _ (aligned4_of_valid hs)).symm
+
+theorem sim_LHU (rd rs1 : BitVec 5) (off : BitVec 12) (h : AtPc ms (.Load (.LHU (rd, rs1, off))))
+    (hc : z.m.code z.m.pc = some (.LHU (regOfBits rd) (regOfBits rs1) off))
+    (hs : MemSafe C ms (.Load (.LHU (rd, rs1, off)))) :
+    StepsAgree C ms z := by
+  simp only [MemSafe] at hs
+  have hv : RiscvZkvm.Rv64.isValidHalfwordAccess
+      (z.m.getReg (regOfBits rs1) + RiscvZkvm.Rv64.signExtend12 off) = true := by
+    rw [← GPR_eq C hR]; exact hs
+  refine sim_write' hR h rd (BitVec.setWidth 64 (holWordExtract 16 15 0
+    (rawReadData (GPR rs1 ms + BitVec.signExtend 64 off) ms))) _ ?_
+    (by rw [RiscvZkvm.Rv64.step_lhu hc hv]; rfl) ?_
+  · simp only [Run, «dfn'LHU», translateAddr, GPR_fetched]; rfl
+  · rw [GPR_eq C hR] at hs ⊢
+    exact (load_lhu hR.mem _ (aligned2_of_valid hs)).symm
+
+theorem sim_LBU (rd rs1 : BitVec 5) (off : BitVec 12) (h : AtPc ms (.Load (.LBU (rd, rs1, off))))
+    (hc : z.m.code z.m.pc = some (.LBU (regOfBits rd) (regOfBits rs1) off))
+    (hs : MemSafe C ms (.Load (.LBU (rd, rs1, off)))) :
+    StepsAgree C ms z := by
+  simp only [MemSafe] at hs
+  have hv : RiscvZkvm.Rv64.isValidByteAccess
+      (z.m.getReg (regOfBits rs1) + RiscvZkvm.Rv64.signExtend12 off) = true := by
+    rw [← GPR_eq C hR]; exact hs
+  refine sim_write' hR h rd (BitVec.setWidth 64 (holWordExtract 8 7 0
+    (rawReadData (GPR rs1 ms + BitVec.signExtend 64 off) ms))) _ ?_
+    (by rw [RiscvZkvm.Rv64.step_lbu hc hv]; rfl) ?_
+  · simp only [Run, «dfn'LBU», translateAddr, GPR_fetched]; rfl
+  · rw [GPR_eq C hR]
+    exact (load_lbu hR.mem _).symm
+
+end Loads
+
 end RiscvImCompare
