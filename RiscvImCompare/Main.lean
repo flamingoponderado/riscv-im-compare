@@ -105,4 +105,79 @@ theorem machineSem_l3_iff_zkvm {σ : Type} (C : BitVec 64 → Prop)
     machineSemHOL mc ffi ms b ↔ machineSemHOL (zkvmConfig mc nextI ffiI ccacheI) ffi z b :=
   machineSem_sim (simConfig_zkvm C mc htarget nextI ffiI ccacheI hor) hR hsafe b
 
+open Flapjack.Pancake.Proofs.PanToTarget Flapjack.Compiler.Backend Flapjack.Compiler.Backend.BackendProof
+open Flapjack.Basis.Pure.MlString Flapjack.Pancake.PanLang Flapjack.SemanticsPropsHOL
+
+/-- **Pancake compiler correctness on riscv-zkvm.** flapjack's
+`panToTargetCompileSemanticsRiscV` (Pancake → RISC-V, stated over flapjack's L3
+RISC-V model) transferred to the same compiled program running on riscv-zkvm:
+every behaviour of the riscv-zkvm machine is a behaviour allowed for the
+Pancake source program (up to resource limits). All premises of the flapjack
+theorem are kept verbatim; the extra premises are the riscv-zkvm initial
+state related to the L3 one, corresponding environment oracles, and that the
+L3 run is `SafeL3`. -/
+theorem panToTargetCompileSemanticsZkvm {σ : Type}
+    (mc : MachineConfig 64 RiscV.L3.riscv_state RiscVProjection)
+    (pan_code : List (DeclHOL 64)) (bytes : List (BitVec 8)) (bitmaps : List (BitVec 64))
+    (c' : Backend.Config) (stack_max : Option Nat) (s : PanSemStateFiniteExact 64 σ)
+    (ms : RiscV.L3.riscv_state) (globals_size heap_len : Nat) (adj_ptr2 adj_ptr4 : BitVec 64)
+    (ffi : HolFfiState σ) (cbspace data_sp : Nat) (start : MlS)
+    -- riscv-zkvm side:
+    (C : BitVec 64 → Prop)
+    (nextI : Nat → ZState → ZState) (ffiI : Nat → Nat × List (BitVec 8) × ZState → ZState)
+    (ccacheI : Nat → BitVec 64 × BitVec 64 × ZState → ZState)
+    (hor : OraclesCorr C mc nextI ffiI ccacheI) (z : ZState) (hR : Rel C ms z)
+    (hsafe : RunSafe mc ffi (SafeL3 C) ms) :
+    isRiscvMachineConfig mc →
+    compileProgMax (Flapjack.Compiler.pancakeBackendConf riscvBackendConfig) mc pan_code =
+      (some (bytes, bitmaps, c'), stack_max) ∧
+    pancakeGoodCodeHOL pan_code = true ∧
+    distinctParamsHOL (functionsHOL pan_code) ∧
+    ((functionsHOL pan_code).map Prod.fst).Nodup ∧
+    s.code = HolFiniteMapExact.empty ∧
+    s.locals = HolFiniteMapExact.empty ∧
+    s.globals = HolFiniteMapExact.empty ∧
+    sizeOfEidsHOL pan_code < 2 ^ 64 ∧
+    s.eshapes = HolFiniteMapExact.empty ∧
+    (0 : BitVec 64) < mc.target.getReg ms mc.lenReg ∧
+    globals_size =
+      (let dec_shs := decShapesHOL pan_code
+       let struct_ctxt := decsStcnamesHOLExact (width := 64) [] pan_code
+       (dec_shs.map (sizeOfShapeWithContextHOL (holThe struct_ctxt))).sum) ∧
+    mc.target.getReg ms mc.lenReg < mc.target.getReg ms mc.ptr2Reg ∧
+    mc.target.getReg ms mc.lenReg = s.baseAddr ∧
+    globalsAllocatableHOL s pan_code ∧
+    heap_len = (mc.target.getReg ms mc.ptr2Reg + -1 * s.baseAddr).toNat / (64 / 8) ∧
+    s.topAddr = s.baseAddr + (wordSemBytesInWord : BitVec 64) * BitVec.ofNat 64 heap_len -
+      BitVec.ofNat 64 (globals_size * 64 / 8) ∧
+    globals_size ≤ heap_len ∧
+    s.memaddrs = StackRemove.addresses (mc.target.getReg ms mc.lenReg) (heap_len - globals_size) ∧
+    holAligned (wordShiftAmount 64 + 1)
+      (mc.target.getReg ms mc.ptr2Reg + -1 * mc.target.getReg ms mc.lenReg) = true ∧
+    adj_ptr2 = mc.target.getReg ms mc.lenReg +
+      (wordSemBytesInWord : BitVec 64) * BitVec.ofNat 64 StackRemove.maxStackAlloc ∧
+    adj_ptr4 = mc.target.getReg ms mc.len2Reg -
+      (wordSemBytesInWord : BitVec 64) * BitVec.ofNat 64 StackRemove.maxStackAlloc ∧
+    adj_ptr2 ≤ mc.target.getReg ms mc.ptr2Reg ∧
+    mc.target.getReg ms mc.ptr2Reg ≤ adj_ptr4 ∧
+    (mc.target.getReg ms mc.ptr2Reg + -1 * mc.target.getReg ms mc.lenReg).toNat ≤
+      (wordSemBytesInWord : BitVec 64).toNat *
+        (2 * DataToWord.maxHeapLimit 64
+          (Flapjack.Compiler.pancakeBackendConf riscvBackendConfig).dataConf - 1) ∧
+    s.ffi = ffi ∧ mc.target.config.bigEndian = s.be ∧
+    panInstalled bytes cbspace bitmaps data_sp c'.labConf.ffiNames
+      (heapRegs (Flapjack.Compiler.pancakeBackendConf riscvBackendConfig).stackConf.regNames)
+      mc c'.labConf.shmemExtra ms (wlabWlocExact ∘ s.memory) s.memaddrs s.shMemaddrs ∧
+    start = ofString "main" ∧
+    PanSemStateFiniteExact.semanticsDecls s start pan_code ≠ HolBehaviour.fail →
+    ∀ b, machineSemHOL (zkvmConfig mc nextI ffiI ccacheI) ffi z b →
+      extendWithResourceLimitPrimeHOL
+        (optionLt stack_max (some (readLimits mc.target.config
+          (Flapjack.Compiler.pancakeBackendConf riscvBackendConfig) mc ms).1))
+        (fun b' => b' = PanSemStateFiniteExact.semanticsDecls s start pan_code) b  := by
+  intro hmc hpre b hb
+  exact panToTargetCompileSemanticsRiscV mc pan_code bytes bitmaps c' stack_max s ms globals_size
+    heap_len adj_ptr2 adj_ptr4 ffi cbspace data_sp start hmc hpre b
+    ((machineSem_l3_iff_zkvm C mc hmc.1 nextI ffiI ccacheI hor ffi ms z hR hsafe b).mpr hb)
+
 end RiscvImCompare
