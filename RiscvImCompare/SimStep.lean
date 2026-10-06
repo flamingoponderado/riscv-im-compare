@@ -492,4 +492,222 @@ theorem sim_SB (rs1 rs2 : BitVec 5) (off : BitVec 12) (h : AtPc ms (.Store (.SB 
 
 end Stores
 
+/-! ### Branches and jumps -/
+
+theorem signExtend_append_zero {n : Nat} (w : BitVec n) (hn : n + 1 ≤ 64) :
+    BitVec.signExtend 64 (w ++ 0#1) = BitVec.signExtend 64 w <<< 1 := by
+  apply BitVec.eq_of_getLsbD_eq
+  intro j hj
+  simp only [BitVec.getLsbD_signExtend, BitVec.getLsbD_append, BitVec.getLsbD_shiftLeft,
+    BitVec.msb_append, BitVec.getLsbD_zero]
+  rcases Nat.eq_zero_or_pos j with rfl | hpos
+  · simp
+  · have h1 : ¬ j < 1 := by omega
+    simp only [h1, if_false, decide_true, Bool.true_and, Bool.not_false]
+    by_cases hj1 : j - 1 < n
+    · have : j < n + 1 := by omega
+      simp [this, hj1, hj, hpos.ne', BitVec.getElem_signExtend]
+    · have : ¬ j < n + 1 := by omega
+      simp [this, hj1, hj, hpos.ne', BitVec.getElem_signExtend]
+      cases n with
+      | zero => simp [BitVec.msb, BitVec.getMsbD]
+      | succ n => intro _; omega
+
+theorem sim_branch {C : BitVec 64 → Prop} {ms : riscv_state} {z : ZState} (hR : Rel C ms z)
+    {i : instruction} (h : AtPc ms i) (b : Bool) (a : BitVec 64)
+    (hrun : Run i (fetched ms) = if b then branchTo a (fetched ms) else fetched ms)
+    (hz : RiscvZkvm.Rv64.step z.m = some (z.m.setPC (if b then a else z.m.pc + 4))) :
+    StepsAgree C ms z := by
+  have f := (riscvOk_iff ms).mp h.ok
+  cases b with
+  | false =>
+    simp only [Bool.false_eq_true, if_false] at hrun hz
+    refine ⟨_, _, l3_next_normal h _ hrun f.2.2.2.1 f.2.2.1, hz, ?_⟩
+    apply rel_post h.ok
+    · rfl
+    · rfl
+    · exact f.2.2.2.1
+    · simp [«write'PC», fetched, f.2.2.1]
+    · simp [«write'PC», fetched, holUpdate, Skip, hR.pc]
+    · intro r; simp [«write'PC», fetched, hR.regs r]
+    · exact hR.mem
+    · intro a ha; exact hR.code a ha
+  | true =>
+    simp only [if_true] at hrun hz
+    refine ⟨_, _, l3_next_branch h _ a hrun f.2.2.2.1 (by simp [branchTo, «write'NextFetch»,
+      fetched, holUpdate]), hz, ?_⟩
+    apply rel_post h.ok
+    · rfl
+    · rfl
+    · exact f.2.2.2.1
+    · simp [«write'PC», branchTo, «write'NextFetch», fetched, holUpdate]
+    · simp [«write'PC», branchTo, «write'NextFetch», fetched, holUpdate]
+    · intro r; simp [«write'PC», branchTo, «write'NextFetch», fetched, hR.regs r]
+    · exact hR.mem
+    · intro a ha; exact hR.code a ha
+
+theorem sim_jump {C : BitVec 64 → Prop} {ms : riscv_state} {z : ZState} (hR : Rel C ms z)
+    {i : instruction} (h : AtPc ms i) (rd : BitVec 5) (a : BitVec 64)
+    (hrun : Run i (fetched ms) =
+      branchTo a («write'GPR» (ms.c_PC ms.procID + 4, rd) (fetched ms)))
+    (hz : RiscvZkvm.Rv64.step z.m =
+      some ((z.m.setReg (regOfBits rd) (z.m.pc + 4)).setPC a)) :
+    StepsAgree C ms z := by
+  have f := (riscvOk_iff ms).mp h.ok
+  refine ⟨_, _, l3_next_branch h _ a hrun ?_ ?_, hz, ?_⟩
+  · simp only [branchTo, «write'NextFetch», «write'GPR», «write'gpr», fetched]
+    split <;> simp [f.2.2.2.1]
+  · simp only [branchTo, «write'NextFetch», «write'GPR», «write'gpr», fetched]
+    split <;> simp [holUpdate]
+  · apply rel_post h.ok
+    · simp only [«write'PC», branchTo, «write'NextFetch», «write'GPR», «write'gpr», fetched]
+      split <;> rfl
+    · simp only [«write'PC», branchTo, «write'NextFetch», «write'GPR», «write'gpr», fetched]
+      split <;> rfl
+    · simp only [«write'PC», branchTo, «write'NextFetch», «write'GPR», «write'gpr», fetched]
+      split <;> exact f.2.2.2.1
+    · simp only [«write'PC», branchTo, «write'NextFetch», «write'GPR», «write'gpr», fetched]
+      split <;> simp [holUpdate]
+    · simp only [«write'PC», branchTo, «write'NextFetch», «write'GPR», «write'gpr», fetched]
+      split <;> simp [holUpdate]
+    · intro r
+      rw [z_setPC_regs, ← hR.pc, ← regs_write hR rd _ r]
+      simp only [«write'PC», branchTo, «write'NextFetch», «write'GPR», «write'gpr», fetched]
+      split <;> simp_all [holUpdate]
+    · simp only [«write'PC», branchTo, «write'NextFetch», «write'GPR», «write'gpr», fetched]
+      split <;> simpa using hR.mem
+    · intro a ha
+      simp only [«write'PC», branchTo, «write'NextFetch», «write'GPR», «write'gpr», fetched]
+      split <;> simpa using hR.code a ha
+
+theorem pc_bit0 {ms : riscv_state} (hok : riscvOk ms = true) :
+    (ms.c_PC ms.procID).getLsbD 0 = false := by
+  have f := (riscvOk_iff ms).mp hok
+  have := f.2.2.2.2
+  rw [holAligned_two_iff] at this
+  simp only [beq_iff_eq] at this
+  simp only [BitVec.getLsbD, Nat.testBit, Nat.shiftRight_zero]
+  simp; omega
+
+theorem sle_eq_not_slt (a b : BitVec 64) : BitVec.sle b a = !BitVec.slt a b := by
+  simp only [BitVec.sle, BitVec.slt]
+  by_cases h : a.toInt < b.toInt
+  · have : ¬ b.toInt ≤ a.toInt := by omega
+    simp [h, this]
+  · have : b.toInt ≤ a.toInt := by omega
+    simp [h, this]
+
+section Branches
+variable {C : BitVec 64 → Prop} {ms : riscv_state} {z : ZState} (hR : Rel C ms z)
+include hR
+
+theorem sim_BEQ (rs1 rs2 : BitVec 5) (off : BitVec 12) (h : AtPc ms (.Branch (.BEQ (rs1, rs2, off))))
+    (hc : z.m.code z.m.pc = some (.BEQ (regOfBits rs1) (regOfBits rs2) (off ++ 0#1))) :
+    StepsAgree C ms z := by
+  refine sim_branch hR h (GPR rs1 ms == GPR rs2 ms)
+    (ms.c_PC ms.procID + (BitVec.signExtend 64 off <<< 1)) ?_ ?_
+  · simp only [Run, «dfn'BEQ», in32_fetched h.ok, GPR_fetched, PC_fetched, Bool.false_eq_true,
+      if_false]
+    split <;> simp_all
+  · rw [RiscvZkvm.Rv64.step_non_ecall_non_mem hc (by simp) (by simp) rfl]
+    simp only [RiscvZkvm.Rv64.execInstrBr, ← GPR_eq C hR, RiscvZkvm.Rv64.signExtend13,
+      signExtend_append_zero off (by omega), hR.pc]
+    split <;> simp_all [sle_eq_not_slt]
+
+theorem sim_BNE (rs1 rs2 : BitVec 5) (off : BitVec 12) (h : AtPc ms (.Branch (.BNE (rs1, rs2, off))))
+    (hc : z.m.code z.m.pc = some (.BNE (regOfBits rs1) (regOfBits rs2) (off ++ 0#1))) :
+    StepsAgree C ms z := by
+  refine sim_branch hR h (!(GPR rs1 ms == GPR rs2 ms))
+    (ms.c_PC ms.procID + (BitVec.signExtend 64 off <<< 1)) ?_ ?_
+  · simp only [Run, «dfn'BNE», in32_fetched h.ok, GPR_fetched, PC_fetched, Bool.false_eq_true,
+      if_false]
+    split <;> simp_all
+  · rw [RiscvZkvm.Rv64.step_non_ecall_non_mem hc (by simp) (by simp) rfl]
+    simp only [RiscvZkvm.Rv64.execInstrBr, ← GPR_eq C hR, RiscvZkvm.Rv64.signExtend13,
+      signExtend_append_zero off (by omega), hR.pc]
+    split <;> simp_all [sle_eq_not_slt]
+
+theorem sim_BLT (rs1 rs2 : BitVec 5) (off : BitVec 12) (h : AtPc ms (.Branch (.BLT (rs1, rs2, off))))
+    (hc : z.m.code z.m.pc = some (.BLT (regOfBits rs1) (regOfBits rs2) (off ++ 0#1))) :
+    StepsAgree C ms z := by
+  refine sim_branch hR h (BitVec.slt (GPR rs1 ms) (GPR rs2 ms))
+    (ms.c_PC ms.procID + (BitVec.signExtend 64 off <<< 1)) ?_ ?_
+  · simp only [Run, «dfn'BLT», in32_fetched h.ok, GPR_fetched, PC_fetched, Bool.false_eq_true,
+      if_false]
+    split <;> simp_all
+  · rw [RiscvZkvm.Rv64.step_non_ecall_non_mem hc (by simp) (by simp) rfl]
+    simp only [RiscvZkvm.Rv64.execInstrBr, ← GPR_eq C hR, RiscvZkvm.Rv64.signExtend13,
+      signExtend_append_zero off (by omega), hR.pc]
+    split <;> simp_all [sle_eq_not_slt]
+
+theorem sim_BLTU (rs1 rs2 : BitVec 5) (off : BitVec 12) (h : AtPc ms (.Branch (.BLTU (rs1, rs2, off))))
+    (hc : z.m.code z.m.pc = some (.BLTU (regOfBits rs1) (regOfBits rs2) (off ++ 0#1))) :
+    StepsAgree C ms z := by
+  refine sim_branch hR h (BitVec.ult (GPR rs1 ms) (GPR rs2 ms))
+    (ms.c_PC ms.procID + (BitVec.signExtend 64 off <<< 1)) ?_ ?_
+  · simp only [Run, «dfn'BLTU», in32_fetched h.ok, GPR_fetched, PC_fetched, Bool.false_eq_true,
+      if_false]
+    split <;> simp_all
+  · rw [RiscvZkvm.Rv64.step_non_ecall_non_mem hc (by simp) (by simp) rfl]
+    simp only [RiscvZkvm.Rv64.execInstrBr, ← GPR_eq C hR, RiscvZkvm.Rv64.signExtend13,
+      signExtend_append_zero off (by omega), hR.pc]
+    split <;> simp_all [sle_eq_not_slt]
+
+theorem sim_BGE (rs1 rs2 : BitVec 5) (off : BitVec 12) (h : AtPc ms (.Branch (.BGE (rs1, rs2, off))))
+    (hc : z.m.code z.m.pc = some (.BGE (regOfBits rs1) (regOfBits rs2) (off ++ 0#1))) :
+    StepsAgree C ms z := by
+  refine sim_branch hR h (BitVec.sle (GPR rs2 ms) (GPR rs1 ms))
+    (ms.c_PC ms.procID + (BitVec.signExtend 64 off <<< 1)) ?_ ?_
+  · simp only [Run, «dfn'BGE», in32_fetched h.ok, GPR_fetched, PC_fetched, Bool.false_eq_true,
+      if_false]
+    split <;> simp_all
+  · rw [RiscvZkvm.Rv64.step_non_ecall_non_mem hc (by simp) (by simp) rfl]
+    simp only [RiscvZkvm.Rv64.execInstrBr, ← GPR_eq C hR, RiscvZkvm.Rv64.signExtend13,
+      signExtend_append_zero off (by omega), hR.pc]
+    split <;> simp_all [sle_eq_not_slt]
+
+theorem sim_BGEU (rs1 rs2 : BitVec 5) (off : BitVec 12) (h : AtPc ms (.Branch (.BGEU (rs1, rs2, off))))
+    (hc : z.m.code z.m.pc = some (.BGEU (regOfBits rs1) (regOfBits rs2) (off ++ 0#1))) :
+    StepsAgree C ms z := by
+  refine sim_branch hR h (!(BitVec.ult (GPR rs1 ms) (GPR rs2 ms)))
+    (ms.c_PC ms.procID + (BitVec.signExtend 64 off <<< 1)) ?_ ?_
+  · simp only [Run, «dfn'BGEU», in32_fetched h.ok, GPR_fetched, PC_fetched, Bool.false_eq_true,
+      if_false]
+    split <;> simp_all
+  · rw [RiscvZkvm.Rv64.step_non_ecall_non_mem hc (by simp) (by simp) rfl]
+    simp only [RiscvZkvm.Rv64.execInstrBr, ← GPR_eq C hR, RiscvZkvm.Rv64.signExtend13,
+      signExtend_append_zero off (by omega), hR.pc]
+    split <;> simp_all [sle_eq_not_slt]
+
+
+theorem jalr_mask : BitVec.signExtend 64 (BitVec.ofNat 2 2) = ~~~1#64 := by decide
+
+theorem sim_JAL (rd : BitVec 5) (imm : BitVec 20) (h : AtPc ms (.Branch (.JAL (rd, imm))))
+    (hc : z.m.code z.m.pc = some (.JAL (regOfBits rd) (imm ++ 0#1))) :
+    StepsAgree C ms z := by
+  refine sim_jump hR h rd (ms.c_PC ms.procID + (BitVec.signExtend 64 imm <<< 1)) ?_ ?_
+  · simp only [Run, «dfn'JAL», PC_fetched, Step.word_bit_add_lsl_simp, pc_bit0 h.ok,
+      Bool.false_eq_true, if_false]
+    simp [Skip, fetched, holUpdate]
+  · rw [RiscvZkvm.Rv64.step_non_ecall_non_mem hc (by simp) (by simp) rfl]
+    simp only [RiscvZkvm.Rv64.execInstrBr, RiscvZkvm.Rv64.signExtend21,
+      signExtend_append_zero imm (by omega), hR.pc]
+
+theorem sim_JALR (rd rs1 : BitVec 5) (imm : BitVec 12) (h : AtPc ms (.Branch (.JALR (rd, rs1, imm))))
+    (hc : z.m.code z.m.pc = some (.JALR (regOfBits rd) (regOfBits rs1) imm)) :
+    StepsAgree C ms z := by
+  refine sim_jump hR h rd ((GPR rs1 ms + BitVec.signExtend 64 imm) &&& ~~~1#64) ?_ ?_
+  · simp only [Run, «dfn'JALR»]
+    split
+    · rename_i hb
+      rw [BitVec.getLsbD_and] at hb
+      have : (BitVec.signExtend 64 (BitVec.ofNat 2 2)).getLsbD 0 = false := by decide
+      simp [this] at hb
+    · simp only [GPR_fetched, PC_fetched, show BitVec.signExtend 64 (2#2) = ~~~1#64 by decide]
+      simp [Skip, fetched, holUpdate]
+  · rw [RiscvZkvm.Rv64.step_non_ecall_non_mem hc (by simp) (by simp) rfl]
+    simp only [RiscvZkvm.Rv64.execInstrBr, RiscvZkvm.Rv64.signExtend12, ← GPR_eq C hR]
+
+end Branches
+
 end RiscvImCompare
