@@ -1,5 +1,5 @@
 import RiscvImCompare.Main
-import RiscvImCompare.ArbitraryStep
+import RiscvImCompare.ArbitraryCode
 
 /-! Axiom audit of the main results (printed at build time). -/
 
@@ -11,3 +11,7 @@ import RiscvImCompare.ArbitraryStep
 #print axioms RiscvImCompare.step_sim_word
 #print axioms RiscvImCompare.run_sim
 #print axioms RiscvImCompare.l3_ecall_none
+#print axioms RiscvImCompare.decode_eq_toZx
+#print axioms RiscvImCompare.decode_some_toZx
+#print axioms RiscvImCompare.Decode_toZx
+#print axioms RiscvImCompare.run_sim_nonsystem
