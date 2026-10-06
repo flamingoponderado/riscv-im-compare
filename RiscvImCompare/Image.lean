@@ -57,6 +57,18 @@ theorem l3Word_bytes (w : BitVec 32) :
   simp only [BitVec.getLsbD_append, BitVec.getLsbD_extractLsb']
   interval_cases j <;> simp
 
+theorem l3Word_bytes' (w : BitVec 32) :
+    holWordExtract 8 31 24 w ++ (holWordExtract 8 23 16 w ++ (holWordExtract 8 15 8 w ++
+      holWordExtract 8 7 0 w)) = w := by
+  rw [holWordExtract_eq_extractLsb' w 8 31 24 (by omega) (by omega),
+    holWordExtract_eq_extractLsb' w 8 23 16 (by omega) (by omega),
+    holWordExtract_eq_extractLsb' w 8 15 8 (by omega) (by omega),
+    holWordExtract_eq_extractLsb' w 8 7 0 (by omega) (by omega)]
+  apply BitVec.eq_of_getLsbD_eq
+  intro j hj
+  simp only [BitVec.getLsbD_append, BitVec.getLsbD_extractLsb']
+  interval_cases j <;> simp
+
 theorem riscvEncode_length (i : instruction) : (riscvEncode i).length = 4 := rfl
 
 theorem length_flatMap_riscvEncode (l : List instruction) :
