@@ -1,3 +1,7 @@
+/-
+Portions of this file (the premises of `panToTargetCompileSemanticsZkvm`) are copied from
+Flapjack (BSD 3-Clause License); see LICENSE and LICENSES/flapjack-COPYRIGHT.
+-/
 import RiscvImCompare.SimStep
 import Flapjack.Pancake.Proofs.PanToTarget.RiscVInstance
 

@@ -1,3 +1,7 @@
+/-
+The proof of `l3_fetch` is adapted from Flapjack (BSD 3-Clause License);
+see LICENSE and LICENSES/flapjack-COPYRIGHT.
+-/
 import RiscvImCompare.Relation
 import Flapjack.RiscV.CorrectnessEncoding.DecodeAddi
 import Flapjack.RiscV.CorrectnessEncoding.DecodeBinop
