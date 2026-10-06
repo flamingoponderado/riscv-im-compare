@@ -376,4 +376,120 @@ theorem sim_LBU (rd rs1 : BitVec 5) (off : BitVec 12) (h : AtPc ms (.Load (.LBU 
 
 end Loads
 
+/-! ### Stores -/
+
+theorem l3Word_frame {m m' : BitVec 64 → BitVec 8} {a : BitVec 64}
+    (h : ∀ i < 4, m' (a + BitVec.ofNat 64 i) = m (a + BitVec.ofNat 64 i)) :
+    l3Word m' a = l3Word m a := by
+  have h0 := h 0 (by omega); have h1 := h 1 (by omega)
+  have h2 := h 2 (by omega); have h3 := h 3 (by omega)
+  simp only [BitVec.ofNat_eq_ofNat, BitVec.add_zero] at h0 h1 h2 h3
+  simp only [l3Word, h0]
+  rw [show a + 1 = a + 1#64 from rfl, show a + 2 = a + 2#64 from rfl,
+    show a + 3 = a + 3#64 from rfl, h1, h2, h3]
+
+/-- Generic store simulation. -/
+theorem sim_store {C : BitVec 64 → Prop} {ms : riscv_state} {z : ZState} (hR : Rel C ms z)
+    {i : instruction} (h : AtPc ms i) (p v : BitVec 64) (n : Nat)
+    (hn : n = 1 ∨ n = 2 ∨ n = 4 ∨ n = 8) (hp : p.toNat % n = 0) (hnc : NoCodeWrite C p n)
+    (hrun : Run i (fetched ms) = rawWriteData (p, v, n) (fetched ms))
+    (m1 : MachineState) (hregs : m1.regs = z.m.regs) (hcode : m1.code = z.m.code)
+    (hpc1 : m1.pc = z.m.pc)
+    (hmem : MemRel (rawWriteData (p, v, n) (fetched ms)).MEM8 m1.mem)
+    (hz : RiscvZkvm.Rv64.step z.m = some (m1.setPC (z.m.pc + 4))) :
+    StepsAgree C ms z := by
+  have f := (riscvOk_iff ms).mp h.ok
+  have hw := rawWriteData_eq (ms := fetched ms) p v n
+  refine ⟨_, _, l3_next_normal h _ hrun ?_ ?_, hz, ?_⟩
+  · rw [hw]; exact f.2.2.2.1
+  · rw [hw]; exact f.2.2.1
+  · rw [hw]
+    apply rel_post h.ok
+    · rfl
+    · rfl
+    · exact f.2.2.2.1
+    · simp [«write'PC», fetched, holUpdate, f.2.2.1]
+    · simp [«write'PC», fetched, holUpdate, Skip, hR.pc]
+    · intro r; simp [«write'PC», fetched, hregs, hR.regs r]
+    · exact hmem
+    · intro a ha
+      simp only [z_setPC_code, hcode, «write'PC»]
+      rw [hR.code a ha]
+      congr 1
+      symm
+      apply l3Word_frame
+      intro k hk
+      exact store_frame (ms := fetched ms) p v n hn hp _ (fun j hj => hnc a ha k hk j hj)
+
+section Stores
+variable {C : BitVec 64 → Prop} {ms : riscv_state} {z : ZState} (hR : Rel C ms z)
+include hR
+
+theorem sim_SD (rs1 rs2 : BitVec 5) (off : BitVec 12) (h : AtPc ms (.Store (.SD (rs1, rs2, off))))
+    (hc : z.m.code z.m.pc = some (.SD (regOfBits rs1) (regOfBits rs2) off))
+    (hs : MemSafe C ms (.Store (.SD (rs1, rs2, off)))) :
+    StepsAgree C ms z := by
+  simp only [MemSafe] at hs
+  obtain ⟨hs, hnc⟩ := hs
+  have hv : RiscvZkvm.Rv64.isValidDwordAccess
+      (z.m.getReg (regOfBits rs1) + RiscvZkvm.Rv64.signExtend12 off) = true := by
+    rw [← GPR_eq C hR]; exact hs
+  refine sim_store hR h _ (GPR rs2 ms) 8 (by omega) (aligned8_of_valid hs) hnc ?_
+    (z.m.setMem (GPR rs1 ms + BitVec.signExtend 64 off) (GPR rs2 ms)) rfl rfl rfl
+    (store_sd (ms := fetched ms) hR.mem _ _ (aligned8_of_valid hs)) ?_
+  · simp only [Run, «dfn'SD», in32_fetched h.ok, translateAddr, GPR_fetched, Bool.false_eq_true,
+      if_false]
+  · rw [RiscvZkvm.Rv64.step_sd hc hv]
+    simp only [RiscvZkvm.Rv64.execInstrBr, GPR_eq C hR, RiscvZkvm.Rv64.signExtend12]
+
+theorem sim_SW (rs1 rs2 : BitVec 5) (off : BitVec 12) (h : AtPc ms (.Store (.SW (rs1, rs2, off))))
+    (hc : z.m.code z.m.pc = some (.SW (regOfBits rs1) (regOfBits rs2) off))
+    (hs : MemSafe C ms (.Store (.SW (rs1, rs2, off)))) :
+    StepsAgree C ms z := by
+  simp only [MemSafe] at hs
+  obtain ⟨hs, hnc⟩ := hs
+  have hv : RiscvZkvm.Rv64.isValidMemAccess
+      (z.m.getReg (regOfBits rs1) + RiscvZkvm.Rv64.signExtend12 off) = true := by
+    rw [← GPR_eq C hR]; exact hs
+  refine sim_store hR h _ (GPR rs2 ms) 4 (by omega) (aligned4_of_valid hs) hnc ?_
+    (z.m.setWord32 (GPR rs1 ms + BitVec.signExtend 64 off) ((GPR rs2 ms).truncate 32)) rfl rfl rfl
+    (store_sw (ms := fetched ms) hR.mem _ _ (aligned4_of_valid hs)) ?_
+  · simp only [Run, «dfn'SW», translateAddr, GPR_fetched]
+  · rw [RiscvZkvm.Rv64.step_sw hc hv]
+    simp only [RiscvZkvm.Rv64.execInstrBr, GPR_eq C hR, RiscvZkvm.Rv64.signExtend12]
+
+theorem sim_SH (rs1 rs2 : BitVec 5) (off : BitVec 12) (h : AtPc ms (.Store (.SH (rs1, rs2, off))))
+    (hc : z.m.code z.m.pc = some (.SH (regOfBits rs1) (regOfBits rs2) off))
+    (hs : MemSafe C ms (.Store (.SH (rs1, rs2, off)))) :
+    StepsAgree C ms z := by
+  simp only [MemSafe] at hs
+  obtain ⟨hs, hnc⟩ := hs
+  have hv : RiscvZkvm.Rv64.isValidHalfwordAccess
+      (z.m.getReg (regOfBits rs1) + RiscvZkvm.Rv64.signExtend12 off) = true := by
+    rw [← GPR_eq C hR]; exact hs
+  refine sim_store hR h _ (GPR rs2 ms) 2 (by omega) (aligned2_of_valid hs) hnc ?_
+    (z.m.setHalfword (GPR rs1 ms + BitVec.signExtend 64 off) ((GPR rs2 ms).truncate 16)) rfl rfl
+    rfl (store_sh (ms := fetched ms) hR.mem _ _ (aligned2_of_valid hs)) ?_
+  · simp only [Run, «dfn'SH», translateAddr, GPR_fetched]
+  · rw [RiscvZkvm.Rv64.step_sh hc hv]
+    simp only [RiscvZkvm.Rv64.execInstrBr, GPR_eq C hR, RiscvZkvm.Rv64.signExtend12]
+
+theorem sim_SB (rs1 rs2 : BitVec 5) (off : BitVec 12) (h : AtPc ms (.Store (.SB (rs1, rs2, off))))
+    (hc : z.m.code z.m.pc = some (.SB (regOfBits rs1) (regOfBits rs2) off))
+    (hs : MemSafe C ms (.Store (.SB (rs1, rs2, off)))) :
+    StepsAgree C ms z := by
+  simp only [MemSafe] at hs
+  obtain ⟨hs, hnc⟩ := hs
+  have hv : RiscvZkvm.Rv64.isValidByteAccess
+      (z.m.getReg (regOfBits rs1) + RiscvZkvm.Rv64.signExtend12 off) = true := by
+    rw [← GPR_eq C hR]; exact hs
+  refine sim_store hR h _ (GPR rs2 ms) 1 (by omega) (by omega) hnc ?_
+    (z.m.setByte (GPR rs1 ms + BitVec.signExtend 64 off) ((GPR rs2 ms).truncate 8)) rfl rfl
+    rfl (store_sb (ms := fetched ms) hR.mem _ _) ?_
+  · simp only [Run, «dfn'SB», translateAddr, GPR_fetched]
+  · rw [RiscvZkvm.Rv64.step_sb hc hv]
+    simp only [RiscvZkvm.Rv64.execInstrBr, GPR_eq C hR, RiscvZkvm.Rv64.signExtend12]
+
+end Stores
+
 end RiscvImCompare
